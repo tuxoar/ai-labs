@@ -4,7 +4,7 @@
 
 ### Goal
 
-Transition from Security Engineer / Kubernetes Platform Engineer into:
+The goal of these labs is to strengthen skills towards being an: 
 
 * AI Infrastructure Engineer
 * AI Platform Engineer
@@ -22,9 +22,7 @@ This plan is optimized around existing strengths:
 * CI/CD
 * Platform Engineering
 
-The objective is not to become a data scientist.
-
-The objective is to become the engineer who can securely deploy, operate, govern, and scale AI systems.
+The objective is not to become a data scientist, instead is to become the engineer who can securely deploy, operate, govern, and scale AI systems.
 
 ---
 
@@ -51,7 +49,7 @@ At the end of 90 days, the portfolio should contain:
 * Existing observability stack
 * Existing security tooling
 
-### W2AMO AI Server
+### Local AI Server
 
 Current purpose:
 
@@ -67,7 +65,7 @@ Treat this server as:
 
 Do not immediately move model serving into Kubernetes.
 
-The Kubernetes cluster should consume AI services from W2AMO.
+The Kubernetes cluster should consume AI services from the local AI server.
 
 ---
 
@@ -110,7 +108,7 @@ Open WebUI
 ↓
 LiteLLM
 ↓
-W2AMO Model Server
+Local AI Model Server
 
 ---
 
