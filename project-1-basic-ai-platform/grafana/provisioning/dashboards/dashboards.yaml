@@ -1,0 +1,16 @@
+apiVersion: 1
+
+# Auto-load any dashboard JSON found alongside this file into an "AI Platform"
+# folder. (The .yaml provider config and .json dashboards coexist in this dir;
+# Grafana only treats .json files as dashboards.)
+providers:
+  - name: ai-platform
+    orgId: 1
+    folder: AI Platform
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,120 @@
+name: basic-ai-platform
+
+# Project 1 — Basic AI Platform (Compose-first).
+#
+#   Users -> Open WebUI -> LiteLLM -> Local AI Model Server
+#                              |-> Postgres (pgvector)   keys/logs/embeddings
+#                              |-> Redis                 response cache
+#   Prometheus scrapes LiteLLM; Grafana visualizes.
+#
+# Copy .env.example to .env and fill it in before `docker compose up -d`.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aiplat]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [aiplat]
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL}
+      LOCAL_AI_API_KEY: ${LOCAL_AI_API_KEY:-none}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    ports:
+      - "4000:4000"
+    networks: [aiplat]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    depends_on:
+      - litellm
+    environment:
+      # Talk only to LiteLLM — one OpenAI-compatible gateway, no direct model access.
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_OLLAMA_API: "false"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/openwebui
+    volumes:
+      - openwebui:/app/backend/data
+    ports:
+      - "3000:8080"
+    networks: [aiplat]
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    # Resolve "ai-server" to the real host (kept in .env, out of prometheus.yml).
+    extra_hosts:
+      - "ai-server:${AI_SERVER_IP}"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [aiplat]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks: [aiplat]
+
+volumes:
+  pgdata:
+  redisdata:
+  openwebui:
+  promdata:
+  grafanadata:
+
+networks:
+  aiplat:
+    driver: bridge

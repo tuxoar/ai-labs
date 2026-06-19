@@ -1,0 +1,109 @@
+# LiteLLM proxy config — the gateway between Open WebUI and your local AI server.
+#
+# Your local AI server is treated as an OpenAI-compatible provider. Point
+# LOCAL_AI_BASE_URL at it (e.g. http://192.168.x.x:11434/v1 for Ollama, or the
+# vLLM OpenAI endpoint). Rename the models below to match what your server serves.
+
+# Models on the Ollama server at 10.6.6.13 (senai). RTX 5080 16GB + 128GB RAM.
+# Tier 1 = fits in VRAM (fast); Tier 2/3 = RAM offload via llama.cpp (slower).
+model_list:
+  # --- Tier 1: fast, VRAM-resident chat (interactive daily drivers) ---
+  - model_name: llama3                 # 8B, original default
+    litellm_params:
+      model: openai/llama3:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: llama3.1               # 8B, newer than llama3
+    litellm_params:
+      model: openai/llama3.1:8b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: gemma2                 # 9B
+    litellm_params:
+      model: openai/gemma2:9b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: phi4                   # 14B
+    litellm_params:
+      model: openai/phi4:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: qwen2.5                # 14B, strong general model
+    litellm_params:
+      model: openai/qwen2.5:14b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  # --- Coding ---
+  - model_name: coder                  # Qwen2.5-Coder 14B
+    litellm_params:
+      model: openai/qwen2.5-coder:14b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: deepseek-coder         # DeepSeek-Coder-V2 16B MoE
+    litellm_params:
+      model: openai/deepseek-coder-v2:16b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  # --- Tier 2/3: larger, partial RAM offload (reasoning / quality batch) ---
+  - model_name: qwen3                  # 36B MoE
+    litellm_params:
+      model: openai/qwen3.6:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  # kimi-k2 (1T) is proxied to ollama.com's cloud and returns 401 unless the
+  # Ollama daemon on senai is signed in (`ollama signin`). Disabled until then.
+  # - model_name: kimi-k2
+  #   litellm_params:
+  #     model: openai/kimi-k2.6:cloud
+  #     api_base: os.environ/LOCAL_AI_BASE_URL
+  #     api_key: os.environ/LOCAL_AI_API_KEY
+
+  # --- Embedding models (Project 2 RAG). Keep ingestion + query on the SAME
+  # model; different models output different dims, so use separate pgvector
+  # columns/tables per model when benchmarking. ---
+  - model_name: embed-nomic            # 768 dims, 8k ctx — default
+    litellm_params:
+      model: openai/nomic-embed-text:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: embed-bge-m3           # 1024 dims, 8k ctx — hybrid (dense+sparse)
+    litellm_params:
+      model: openai/bge-m3:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+  - model_name: embed-arctic2          # 1024 dims — benchmark contender
+    litellm_params:
+      model: openai/snowflake-arctic-embed2:latest
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+
+litellm_settings:
+  drop_params: true
+  cache: true
+  cache_params:
+    type: redis
+    host: redis
+    port: 6379
+  # Emit Prometheus metrics on /metrics for the prometheus service to scrape.
+  callbacks: ["prometheus"]
+  # /metrics is only reachable on the internal compose network, so allow the
+  # Prometheus scraper to read it without a bearer token. (Default requires auth,
+  # which makes the scrape return 401.)
+  require_auth_for_metrics_endpoint: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  # Persist keys, spend, and request logs in Postgres — the audit/cost-control
+  # foundation that Project 4 (governance) builds on.
+  store_model_in_db: true
