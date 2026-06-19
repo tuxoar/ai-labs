@@ -30,7 +30,7 @@ The objective is not to become a data scientist, instead is to become the engine
 
 At the end of 90 days, the portfolio should contain:
 
-1. Secure AI Platform on Kubernetes
+1. Basic AI Platform on Kubernetes
 2. Enterprise AI Control Plane
 3. AI Knowledge Platform
 4. AI Security Operations Platform
@@ -88,7 +88,7 @@ Learn:
 
 ## Project 1
 
-### Secure AI Platform
+### Basic AI Platform
 
 Deploy:
 
