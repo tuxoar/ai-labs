@@ -171,6 +171,128 @@ Must include:
 
 ---
 
+## pgvector Sub-Projects
+
+Optional, self-contained tasks to exercise pgvector within Project 1, before the full RAG build in Project 2.
+
+Each uses:
+
+* pgvector (knowledge DB)
+* Embedding models via LiteLLM (embed-nomic 768, embed-bge-m3 1024, embed-arctic2 1024)
+* A small Python service (uv)
+* Embedding calls routed through the gateway (visible in Grafana)
+
+---
+
+### 1. Embedding Model Benchmark
+
+Goal:
+
+Compare the three embedding models on the same corpus.
+
+Build:
+
+* Separate vector(768) / vector(1024) tables per model
+* A query set with expected results
+* Recall@k measurement
+
+Learn:
+
+* Cosine distance (<=>)
+* Why dimension count and index choice matter
+
+Bridges to: Project 2 (model selection for RAG)
+
+---
+
+### 2. CVE Semantic Search
+
+Goal:
+
+Natural-language search over real security data.
+
+Build:
+
+* Ingest a slice of the NVD CVE feed (public JSON)
+* Embed each description into pgvector
+* Query: "container escape via runtime", "kubelet privilege escalation"
+
+Learn:
+
+* HNSW index
+* Cosine distance
+* Metadata filtering (CVSS, year)
+
+Bridges to: Project 3 (alert / CVE investigation)
+
+---
+
+### 3. Prompt-Injection Detector
+
+Goal:
+
+Embedding-similarity guardrail for the gateway.
+
+Build:
+
+* Corpus of known jailbreak / injection prompts
+* Embed and store in pgvector
+* Score incoming prompts by similarity to nearest known-bad
+* Flag / block above a threshold
+
+Learn:
+
+* Nearest-neighbor scoring
+* OWASP LLM01 (Prompt Injection)
+* LiteLLM guardrail callbacks (turn it into a real gateway control)
+
+Bridges to: Project 4 (governance / security controls)
+
+---
+
+### 4. Semantic Response Cache
+
+Goal:
+
+Cache semantically similar prompts, not just identical ones.
+
+Build:
+
+* Embed each prompt, store with its response
+* On new prompt, return cached answer if a near-match exists
+* Tunable similarity threshold + TTL
+
+Learn:
+
+* Similarity thresholds
+* Trade-offs vs exact-match (Redis) caching
+
+Bridges to: gateway efficiency / cost control
+
+---
+
+### 5. pgvector Index Performance Lab
+
+Goal:
+
+Understand vector index behavior at scale.
+
+Build:
+
+* Load N synthetic/real vectors
+* Compare HNSW vs IVFFlat (latency, recall, build time)
+* Expose query latency as a Grafana panel
+
+Learn:
+
+* Index types and tuning
+* EXPLAIN / ANALYZE for vector queries
+* Capacity planning
+
+Bridges to: platform performance engineering
+
+---
+
 # Month 2
 
 # AI Knowledge Platform
