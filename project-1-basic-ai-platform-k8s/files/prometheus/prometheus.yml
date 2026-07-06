@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # LiteLLM exposes /metrics when the prometheus callback is enabled (see
+  # litellm/config.yaml). Token usage, request counts, latency, spend.
+  - job_name: litellm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["litellm:4000"]
+
+  # AI server host metrics (node_exporter). "ai-server" is resolved via the
+  # prometheus service's extra_hosts in docker-compose.yml (IP lives in .env).
+  - job_name: node-ai-server
+    static_configs:
+      - targets: ["ai-server:9100"]
+        labels:
+          host: ai-server
+
+  # AI server GPU metrics (NVIDIA dcgm-exporter).
+  - job_name: dcgm-ai-server
+    static_configs:
+      - targets: ["ai-server:9400"]
+        labels:
+          host: ai-server

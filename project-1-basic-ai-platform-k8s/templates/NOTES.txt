@@ -1,0 +1,40 @@
+basic-ai-platform ({{ .Release.Name }}) deployed to namespace {{ .Release.Namespace }}.
+
+Model server (external): {{ .Values.localAi.baseUrl }}  ->  ai-server @ {{ .Values.aiServer.ip }}
+
+Secrets:
+{{- if .Values.secrets.vault.enabled }}
+  Vault: syncing {{ .Values.secrets.vault.mount }}/{{ .Values.secrets.vault.path }} into Secret "{{ .Values.secrets.secretName }}" via VSO.
+{{- else if .Values.secrets.existingSecret }}
+  Using pre-existing Secret "{{ .Values.secrets.existingSecret }}".
+{{- else }}
+  Rendered Secret "{{ .Values.secrets.secretName }}" from -f values-secret.local.yaml.
+{{- end }}
+
+Observability:
+{{- if .Values.prometheus.enabled }}
+  Bundled Prometheus + Grafana deployed in this namespace.
+{{- else if .Values.monitoring.serviceMonitors.enabled }}
+  Using the existing kube-prometheus-stack: ServiceMonitors emitted for litellm + ai-server{{ if .Values.monitoring.dashboards.enabled }}; LiteLLM dashboard shipped to the "{{ .Values.monitoring.dashboards.namespace }}" namespace for the Grafana sidecar{{ end }}.
+{{- else }}
+  No metrics collection configured (bundled disabled, no ServiceMonitors).
+{{- end }}
+
+{{- if .Values.gateway.enabled }}
+Access (Gateway API):
+{{- if .Values.gateway.hosts.openWebui }}
+  Open WebUI : https://{{ .Values.gateway.hosts.openWebui }}
+{{- end }}
+{{- if and .Values.grafana.enabled .Values.gateway.hosts.grafana }}
+  Grafana    : https://{{ .Values.gateway.hosts.grafana }} (user: {{ .Values.grafana.user }})
+{{- end }}
+{{- else }}
+Access (port-forward; or use NodePort with `kubectl get svc -n {{ .Release.Namespace }}`):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/open-webui 3000:3000   # http://localhost:3000
+{{- if .Values.grafana.enabled }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/grafana    3001:3001   # http://localhost:3001
+{{- end }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/litellm    4000:4000   # gateway API
+{{- end }}
+
+Check rollout:  kubectl -n {{ .Release.Namespace }} get pods

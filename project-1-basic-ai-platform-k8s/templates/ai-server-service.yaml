@@ -1,0 +1,46 @@
+# The external model server (Ollama + node_exporter + dcgm-exporter) modeled as
+# a selector-less Service + manual EndpointSlice. This is the Kubernetes
+# equivalent of the Compose `extra_hosts: ai-server:<ip>` mapping: in-cluster
+# clients resolve "ai-server" and get routed to the real box. LiteLLM talks to
+# :11434, Prometheus scrapes :9100 and :9400 — all by the name "ai-server".
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-server
+  labels:
+    app.kubernetes.io/name: ai-server
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  # No selector: endpoints are provided manually below.
+  clusterIP: None
+  ports:
+    - name: ollama
+      port: {{ .Values.aiServer.ollamaPort }}
+      targetPort: {{ .Values.aiServer.ollamaPort }}
+    - name: node-exporter
+      port: {{ .Values.aiServer.nodeExporterPort }}
+      targetPort: {{ .Values.aiServer.nodeExporterPort }}
+    - name: dcgm
+      port: {{ .Values.aiServer.dcgmPort }}
+      targetPort: {{ .Values.aiServer.dcgmPort }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: ai-server
+  labels:
+    kubernetes.io/service-name: ai-server
+    {{- include "bap.labels" . | nindent 4 }}
+addressType: IPv4
+endpoints:
+  - addresses:
+      - {{ .Values.aiServer.ip | quote }}
+    conditions:
+      ready: true
+ports:
+  - name: ollama
+    port: {{ .Values.aiServer.ollamaPort }}
+  - name: node-exporter
+    port: {{ .Values.aiServer.nodeExporterPort }}
+  - name: dcgm
+    port: {{ .Values.aiServer.dcgmPort }}

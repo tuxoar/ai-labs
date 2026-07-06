@@ -1,0 +1,44 @@
+{{- if .Values.monitoring.serviceMonitors.enabled }}
+# ServiceMonitors for an existing kube-prometheus-stack to scrape. Replaces the
+# scrape jobs the bundled Prometheus would have run (litellm + ai-server).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: litellm
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitors.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitors.interval }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-server
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitors.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-server
+  # The selector-less ai-server Service + EndpointSlice exposes the external
+  # node_exporter and dcgm-exporter; scrape both named ports.
+  endpoints:
+    - port: node-exporter
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitors.interval }}
+    - port: dcgm
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitors.interval }}
+{{- end }}

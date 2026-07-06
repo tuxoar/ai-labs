@@ -1,0 +1,6 @@
+# Keep generated local secret overrides out of any packaged chart.
+values-secret*.yaml
+*.tgz
+.DS_Store
+scripts/
+README.md

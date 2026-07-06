@@ -1,0 +1,148 @@
+# Default values for basic-ai-platform.
+# These defaults lean "safe/internal": no external exposure, generated secrets
+# expected via -f values-secret.local.yaml. Use values-local.yaml for a laptop
+# cluster or values-talos.yaml for the GitOps/Talos deployment.
+
+# --- The external model server (Ollama/vLLM on the RTX 5080 box) --------------
+# Reached in-cluster through a selector-less Service named "ai-server" that
+# points at this IP. Ports: 11434 (OpenAI API), 9100 (node_exporter),
+# 9400 (dcgm-exporter). LiteLLM and Prometheus address it by the name "ai-server".
+aiServer:
+  ip: "10.6.6.13"
+  ollamaPort: 11434
+  nodeExporterPort: 9100
+  dcgmPort: 9400
+# LiteLLM points here; keep in sync with aiServer.ip. Path must end in /v1.
+localAi:
+  baseUrl: "http://ai-server:11434/v1"
+  apiKey: "none"
+
+# --- Secrets -----------------------------------------------------------------
+# Three mutually-exclusive modes:
+#   create=true            -> chart renders a Secret from .secrets.values (local/dev).
+#                             Provide real values via a gitignored -f file; never commit them.
+#   vault.enabled=true     -> chart renders SA + VaultAuth + VaultStaticSecret; VSO
+#                             syncs the named Secret from Vault (Talos/prod).
+#   existingSecret set     -> use a Secret you created out-of-band; chart renders neither.
+secrets:
+  secretName: basic-ai-platform-secrets
+  create: true
+  existingSecret: ""
+  # Filled in ONLY via a local -f override (see scripts/gen-secret-values.sh). Empty here on purpose.
+  values:
+    postgresPassword: ""
+    litellmMasterKey: ""
+    litellmSaltKey: ""
+    webuiSecretKey: ""
+    grafanaPassword: ""
+  vault:
+    enabled: false
+    # KV-v2 mount + path holding the 5 keys above (same key names, camelCase).
+    mount: secret
+    path: basic-ai-platform
+    role: basic-ai-platform
+    refreshAfter: 60s
+
+# --- Postgres (pgvector) -----------------------------------------------------
+postgres:
+  image: pgvector/pgvector:pg16
+  user: aiplat
+  db: aiplat          # bootstrap DB; init SQL also creates litellm/openwebui/knowledge
+  storage:
+    size: 10Gi
+    storageClassName: ""   # "" = cluster default; set to openebs-replicated on Talos
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+# --- Redis (LiteLLM response cache) ------------------------------------------
+redis:
+  image: redis:7-alpine
+  storage:
+    size: 2Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+# --- LiteLLM gateway ---------------------------------------------------------
+litellm:
+  image: ghcr.io/berriai/litellm:main-stable
+  port: 4000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+# --- Open WebUI --------------------------------------------------------------
+openWebui:
+  image: ghcr.io/open-webui/open-webui:main
+  storage:
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+# --- Observability -----------------------------------------------------------
+# Two modes:
+#   * Bundled (default): deploy our own Prometheus + Grafana (good for a laptop
+#     cluster with no monitoring stack).
+#   * Existing stack: set prometheus.enabled=false and grafana.enabled=false, then
+#     turn on monitoring.serviceMonitors + monitoring.dashboards so an existing
+#     kube-prometheus-stack scrapes LiteLLM/ai-server and imports the dashboard.
+prometheus:
+  enabled: true
+  image: prom/prometheus:latest
+  storage:
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+# --- Grafana -----------------------------------------------------------------
+grafana:
+  enabled: true
+  image: grafana/grafana:latest
+  user: admin
+  storage:
+    size: 2Gi
+    storageClassName: ""
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+# --- Integration with an EXISTING kube-prometheus-stack ----------------------
+# Only meaningful when the bundled prometheus/grafana above are disabled.
+monitoring:
+  serviceMonitors:
+    # Emit ServiceMonitors for LiteLLM (:4000/metrics) and the external ai-server
+    # (node_exporter :9100, dcgm :9400). Your kube-prom-stack has
+    # serviceMonitorSelectorNilUsesHelmValues=false, so it scrapes these with no
+    # extra label; add labels here only if you tighten that selector later.
+    enabled: false
+    interval: 15s
+    labels: {}
+  dashboards:
+    # Render the LiteLLM dashboard as a ConfigMap the kube-prom Grafana sidecar
+    # auto-imports. The sidecar watches its own namespace by default, so this
+    # ConfigMap is placed in `namespace` (where Grafana runs), not the app namespace.
+    enabled: false
+    namespace: monitoring
+    label: grafana_dashboard
+    labelValue: "1"
+
+# --- External access ---------------------------------------------------------
+# service.type governs the "flat" exposure for laptop clusters (NodePort) vs
+# internal-only (ClusterIP). Gateway API (Cilium) is the Talos path.
+service:
+  type: ClusterIP        # local overlay sets NodePort for open-webui/grafana
+
+gateway:
+  enabled: false
+  className: cilium
+  clusterIssuer: letsencrypt
+  # Which UIs get an HTTPRoute. Prometheus/LiteLLM stay internal by default.
+  hosts:
+    openWebui: ""        # e.g. ai.nuahs.net
+    grafana: ""          # e.g. grafana-ai.nuahs.net

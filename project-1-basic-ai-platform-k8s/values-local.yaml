@@ -1,0 +1,28 @@
+# Laptop cluster overlay (Docker Desktop k8s / kind / minikube).
+# Install with:  helm install bap . -f values-local.yaml -f values-secret.local.yaml
+# (generate the secret file first with scripts/gen-secret-values.sh)
+
+# Expose Open WebUI + Grafana on NodePorts so you can reach them without a gateway.
+service:
+  type: NodePort
+
+gateway:
+  enabled: false
+
+# Use the cluster's default StorageClass everywhere (leave storageClassName "").
+# Smaller footprint for a laptop.
+postgres:
+  storage: { size: 5Gi }
+redis:
+  storage: { size: 1Gi }
+openWebui:
+  storage: { size: 2Gi }
+prometheus:
+  storage: { size: 5Gi }
+grafana:
+  storage: { size: 1Gi }
+
+secrets:
+  create: true
+  vault:
+    enabled: false

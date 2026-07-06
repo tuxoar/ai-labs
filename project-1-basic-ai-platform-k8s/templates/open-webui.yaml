@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.openWebui.storage.storageClassName }}
+  storageClassName: {{ .Values.openWebui.storage.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.openWebui.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  # NodePort on the local overlay for browser access without a gateway.
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # single RWO volume
+  selector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 8 }}
+    spec:
+      initContainers:
+        - name: wait-litellm
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z litellm {{ .Values.litellm.port }}; do echo waiting for litellm; sleep 2; done"]
+      containers:
+        - name: open-webui
+          image: {{ .Values.openWebui.image }}
+          env:
+            # Talk only to LiteLLM — one OpenAI-compatible gateway, no direct model access.
+            - name: OPENAI_API_BASE_URL
+              value: "http://litellm:{{ .Values.litellm.port }}/v1"
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: litellmMasterKey
+            - name: WEBUI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: webuiSecretKey
+            - name: ENABLE_OLLAMA_API
+              value: "false"
+            {{- include "bap.postgresEnv" (dict "ctx" . "database" "openwebui") | nindent 12 }}
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.openWebui.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: open-webui

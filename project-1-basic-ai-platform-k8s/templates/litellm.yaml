@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+data:
+  # Verbatim from the Compose stack's litellm/config.yaml. Reads its secrets and
+  # the model-server URL from env (os.environ/...), so the file is environment-agnostic.
+  config.yaml: |
+{{ .Files.Get "files/litellm/config.yaml" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  labels:
+    app.kubernetes.io/name: litellm
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.litellm.port }}
+      targetPort: {{ .Values.litellm.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 8 }}
+      annotations:
+        # Roll the pod when the config changes so edits take effect on sync.
+        checksum/config: {{ .Files.Get "files/litellm/config.yaml" | sha256sum }}
+    spec:
+      initContainers:
+        # Mirror Compose depends_on: block until Postgres and Redis accept connections.
+        - name: wait-deps
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do echo "waiting for postgres"; sleep 2; done
+              until nc -z redis 6379; do echo "waiting for redis"; sleep 2; done
+      containers:
+        - name: litellm
+          image: {{ .Values.litellm.image }}
+          args: ["--config", "/app/config.yaml", "--port", "{{ .Values.litellm.port }}"]
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: litellmMasterKey
+            - name: LITELLM_SALT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: litellmSaltKey
+            {{- include "bap.postgresEnv" (dict "ctx" . "database" "litellm") | nindent 12 }}
+            - name: LOCAL_AI_BASE_URL
+              value: {{ .Values.localAi.baseUrl | quote }}
+            - name: LOCAL_AI_API_KEY
+              value: {{ .Values.localAi.apiKey | quote }}
+          ports:
+            - containerPort: {{ .Values.litellm.port }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: {{ .Values.litellm.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.litellm.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config

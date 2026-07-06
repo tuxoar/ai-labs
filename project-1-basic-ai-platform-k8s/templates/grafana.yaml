@@ -1,0 +1,126 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+data:
+  # Pins the Prometheus datasource (uid: prometheus) to http://prometheus:9090.
+  prometheus.yml: |
+{{ .Files.Get "files/grafana/datasources/prometheus.yml" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+data:
+  # Provider config + the dashboard JSON live in the same dir, exactly as in Compose.
+  dashboards.yaml: |
+{{ .Files.Get "files/grafana/dashboards/dashboards.yaml" | indent 4 }}
+  litellm-overview.json: |
+{{ .Files.Get "files/grafana/dashboards/litellm-overview.json" | indent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "bap.selectorLabels" (dict "component" "grafana") | nindent 4 }}
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.grafana.storage.storageClassName }}
+  storageClassName: {{ .Values.grafana.storage.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.grafana.storage.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "grafana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bap.selectorLabels" (dict "component" "grafana") | nindent 8 }}
+      annotations:
+        checksum/provisioning: {{ printf "%s%s%s" (.Files.Get "files/grafana/datasources/prometheus.yml") (.Files.Get "files/grafana/dashboards/dashboards.yaml") (.Files.Get "files/grafana/dashboards/litellm-overview.json") | sha256sum }}
+    spec:
+      securityContext:
+        fsGroup: 472         # grafana — lets it write to the PVC
+      containers:
+        - name: grafana
+          image: {{ .Values.grafana.image }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.user | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: grafanaPassword
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/grafana
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.grafana.resources | nindent 12 }}
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana
+{{- end }}

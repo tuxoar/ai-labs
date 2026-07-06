@@ -1,0 +1,17 @@
+apiVersion: v2
+name: basic-ai-platform
+description: >-
+  Project 1 — Basic AI Platform on Kubernetes. The Kubernetes twin of the
+  Compose stack in ../project-1-basic-ai-platform: a governed LiteLLM gateway
+  fronting an external model server, Open WebUI, Postgres (pgvector), Redis,
+  and Prometheus + Grafana observability. Rendered as one umbrella chart and
+  deployed either directly (helm install) or via ArgoCD from k8s-gitops.
+type: application
+version: 0.1.0
+# appVersion tracks nothing single here (multi-image stack); pinned per-image in values.yaml.
+appVersion: "1.0.0"
+keywords:
+  - litellm
+  - open-webui
+  - ai-gateway
+  - observability

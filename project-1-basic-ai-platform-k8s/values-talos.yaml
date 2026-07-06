@@ -1,0 +1,49 @@
+# Talos / GitOps overlay — this is the file the ArgoCD Application references.
+# Matches k8s-gitops conventions: openebs-replicated storage, Cilium Gateway API
+# with cert-manager TLS on *.nuahs.net, and secrets synced from Vault via VSO.
+
+# Replicated block storage for the stateful components we keep.
+postgres:
+  storage: { storageClassName: openebs-replicated, size: 20Gi }
+redis:
+  storage: { storageClassName: openebs-replicated, size: 2Gi }
+openWebui:
+  storage: { storageClassName: openebs-replicated, size: 10Gi }
+
+# The cluster already runs kube-prometheus-stack, so don't deploy our own.
+# Instead, hand LiteLLM/ai-server metrics + the dashboard to that stack.
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+monitoring:
+  serviceMonitors:
+    enabled: true
+  dashboards:
+    enabled: true
+    namespace: monitoring   # where the kube-prom Grafana + its sidecar run
+
+# No NodePorts — external access is via the Gateway only. Only Open WebUI is
+# exposed here; Grafana is the existing kube-prom instance (its own ingress).
+service:
+  type: ClusterIP
+
+gateway:
+  enabled: true
+  className: cilium
+  clusterIssuer: letsencrypt
+  hosts:
+    openWebui: ai.nuahs.net
+    grafana: ""
+
+# Secrets come from Vault (nothing sensitive committed to git). Populate the KV
+# path basic-ai-platform with keys: postgresPassword, litellmMasterKey,
+# litellmSaltKey, webuiSecretKey, grafanaPassword.
+secrets:
+  create: false
+  vault:
+    enabled: true
+    mount: secret
+    path: basic-ai-platform
+    role: basic-ai-platform
+    refreshAfter: 60s

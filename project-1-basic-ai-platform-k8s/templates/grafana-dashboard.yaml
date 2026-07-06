@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.dashboards.enabled }}
+# LiteLLM dashboard handed to the existing kube-prometheus-stack Grafana. Its
+# dashboard sidecar auto-imports ConfigMaps carrying the grafana_dashboard label
+# from its own namespace, so this lands in .Values.monitoring.dashboards.namespace
+# (where that Grafana runs), not the app namespace.
+#
+# The dashboard's panels reference datasource uid "prometheus" — the default uid
+# kube-prometheus-stack assigns its Prometheus datasource, so it resolves as-is.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: basic-ai-platform-dashboard
+  namespace: {{ .Values.monitoring.dashboards.namespace }}
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+    {{ .Values.monitoring.dashboards.label }}: {{ .Values.monitoring.dashboards.labelValue | quote }}
+data:
+  litellm-overview.json: |
+{{ .Files.Get "files/grafana/dashboards/litellm-overview.json" | indent 4 }}
+{{- end }}

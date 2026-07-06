@@ -1,0 +1,91 @@
+{{- if .Values.gateway.enabled }}
+# Cilium Gateway API + cert-manager TLS, matching k8s-gitops conventions.
+# Only the user-facing UIs are exposed; LiteLLM and Prometheus stay internal.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: basic-ai-platform-gw
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.gateway.clusterIssuer }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    {{- if .Values.gateway.hosts.openWebui }}
+    - name: open-webui
+      hostname: {{ .Values.gateway.hosts.openWebui | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: basic-ai-platform-gw-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+    {{- if .Values.gateway.hosts.grafana }}
+    - name: grafana
+      hostname: {{ .Values.gateway.hosts.grafana | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: basic-ai-platform-gw-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+{{- if .Values.gateway.hosts.openWebui }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: open-webui
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ .Values.gateway.hosts.openWebui | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: basic-ai-platform-gw
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: open-webui
+          port: 3000
+{{- end }}
+{{- if .Values.gateway.hosts.grafana }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  hostnames:
+    - {{ .Values.gateway.hosts.grafana | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: basic-ai-platform-gw
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: grafana
+          port: 3001
+{{- end }}
+{{- end }}

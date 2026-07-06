@@ -13,6 +13,10 @@ npm-debug.log*
 .env
 .env.*
 
+# Helm — generated local secret overrides
+values-secret*.yaml
+*.tgz
+
 # OS / editor
 .DS_Store
 .idea/
