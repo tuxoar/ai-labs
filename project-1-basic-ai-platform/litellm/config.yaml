@@ -13,6 +13,9 @@ model_list:
       model: openai/llama3:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      # This Ollama model has no tool support; drop tools so Open WebUI requests
+      # that include them degrade to plain chat instead of a 400 from Ollama.
+      additional_drop_params: ["tools", "tool_choice"]
 
   - model_name: llama3.1               # 8B, newer than llama3
     litellm_params:
@@ -25,12 +28,14 @@ model_list:
       model: openai/gemma2:9b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   - model_name: phi4                   # 14B
     litellm_params:
       model: openai/phi4:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   - model_name: qwen2.5                # 14B, strong general model
     litellm_params:
@@ -50,6 +55,7 @@ model_list:
       model: openai/deepseek-coder-v2:16b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   # --- Tier 2/3: larger, partial RAM offload (reasoning / quality batch) ---
   - model_name: qwen3                  # 36B MoE
