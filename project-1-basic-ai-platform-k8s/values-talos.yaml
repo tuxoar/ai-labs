@@ -18,7 +18,12 @@ grafana:
   enabled: false
 monitoring:
   serviceMonitors:
-    enabled: true
+    enabled: true           # LiteLLM ServiceMonitor
+  scrapeConfig:
+    enabled: true           # ai-server node_exporter + dcgm, static IP targets
+    # Must match the kube-prom-stack Helm release name (its Application name).
+    selectorLabels:
+      release: kube-prom-stack
   dashboards:
     enabled: true
     namespace: monitoring   # where the kube-prom Grafana + its sidecar run

@@ -20,10 +20,12 @@ Every config file (`litellm/config.yaml`, `prometheus.yml`, the Postgres init SQ
 the Grafana provisioning + dashboard) is **copied verbatim** into `files/` and
 mounted via ConfigMaps. That works because the Kubernetes Services are given the
 same DNS names the Compose services had — `postgres`, `redis`, `litellm`,
-`prometheus`, `grafana`, and `ai-server`. So `redis`, `litellm:4000`,
-`http://prometheus:9090`, `ai-server:9100`, etc. all resolve without editing the
-configs. Keep the two stacks in lockstep by editing the source configs and
-re-copying (see the `cp` block below).
+`prometheus`, `grafana`. So `redis`, `litellm:4000`, `http://prometheus:9090`,
+etc. all resolve without editing the configs. The one exception is the **external
+`ai-server`**: it has no in-cluster Service (see below), so its address is the
+raw IP — the bundled `prometheus.yml`'s `ai-server:9100/:9400` targets are
+rewritten to `aiServer.ip` at template time. Keep the two stacks in lockstep by
+editing the source configs and re-copying (see the `cp` block below).
 
 ## Layout
 
@@ -57,9 +59,12 @@ monitoring:
 ```
 
 This is exactly what `values-talos.yaml` does. It emits:
-- a **ServiceMonitor** for LiteLLM (`:4000/metrics`) and one for the external
-  **ai-server** (node_exporter `:9100`, dcgm `:9400`) — picked up automatically
+- a **ServiceMonitor** for LiteLLM (`:4000/metrics`) — picked up automatically
   because your stack sets `serviceMonitorSelectorNilUsesHelmValues: false`;
+- a **ScrapeConfig** for the external **ai-server** (node_exporter `:9100`, dcgm
+  `:9400`) with static IP targets. ScrapeConfigs are selected by the `release`
+  label (`monitoring.scrapeConfig.selectorLabels`, default `kube-prom-stack`) —
+  set it to your kube-prom-stack Helm release name if different;
 - the LiteLLM dashboard as a **ConfigMap labeled `grafana_dashboard: "1"`** in the
   `monitoring` namespace, which the kube-prom Grafana sidecar auto-imports.
 
@@ -75,7 +80,7 @@ only exposes Open WebUI via the gateway.
 | `depends_on` + healthchecks | init-container TCP waits + readiness/liveness probes |
 | named volumes | PVCs (StatefulSet volumeClaimTemplates / Deployment PVC) |
 | `.env` | `values.yaml` + a Secret (generated locally, or Vault-synced on Talos) |
-| `extra_hosts: ai-server:<ip>` | selector-less **Service + Endpoints** named `ai-server` |
+| `extra_hosts: ai-server:<ip>` | **raw IP** (`aiServer.ip`) — no Service, since ArgoCD excludes Endpoints/EndpointSlice |
 | `DATABASE_URL` with inline password | password from Secret; URL composed via k8s `$(VAR)` env interpolation (plaintext URL never stored) |
 | published ports | ClusterIP everywhere; UIs exposed via NodePort (local) or Gateway API (Talos) |
 
@@ -98,7 +103,7 @@ kubectl -n basic-ai-platform port-forward svc/grafana    3001:3001   # http://lo
 
 > The external model server must be reachable from cluster pods at
 > `aiServer.ip` (default `10.6.6.13`). Override with
-> `--set aiServer.ip=<ip> --set localAi.baseUrl=http://ai-server:11434/v1`.
+> `--set aiServer.ip=<ip> --set localAi.baseUrl=http://<ip>:11434/v1`.
 
 Render without installing: `helm template bap . -f values-local.yaml -f values-secret.local.yaml`.
 

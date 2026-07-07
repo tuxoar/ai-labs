@@ -1,6 +1,7 @@
 {{- if .Values.monitoring.serviceMonitors.enabled }}
-# ServiceMonitors for an existing kube-prometheus-stack to scrape. Replaces the
-# scrape jobs the bundled Prometheus would have run (litellm + ai-server).
+# ServiceMonitor for LiteLLM. Its Service has a selector, so Kubernetes creates
+# the backing endpoints automatically (not tracked by ArgoCD), and the existing
+# kube-prometheus-stack scrapes it.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -18,27 +19,26 @@ spec:
     - port: http
       path: /metrics
       interval: {{ .Values.monitoring.serviceMonitors.interval }}
+{{- end }}
+{{- if .Values.monitoring.scrapeConfig.enabled }}
 ---
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+# The external ai-server has no in-cluster Service (ArgoCD excludes Endpoints/
+# EndpointSlice), so scrape its node_exporter + dcgm-exporter by static IP.
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
 metadata:
   name: ai-server
   labels:
     {{- include "bap.labels" . | nindent 4 }}
-    {{- with .Values.monitoring.serviceMonitors.labels }}
+    {{- with .Values.monitoring.scrapeConfig.selectorLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: ai-server
-  # The selector-less ai-server Service + Endpoints exposes the external
-  # node_exporter and dcgm-exporter; scrape both named ports.
-  endpoints:
-    - port: node-exporter
-      path: /metrics
-      interval: {{ .Values.monitoring.serviceMonitors.interval }}
-    - port: dcgm
-      path: /metrics
-      interval: {{ .Values.monitoring.serviceMonitors.interval }}
+  metricsPath: /metrics
+  staticConfigs:
+    - targets:
+        - {{ printf "%s:%v" .Values.aiServer.ip .Values.aiServer.nodeExporterPort | quote }}
+        - {{ printf "%s:%v" .Values.aiServer.ip .Values.aiServer.dcgmPort | quote }}
+      labels:
+        host: ai-server
 {{- end }}

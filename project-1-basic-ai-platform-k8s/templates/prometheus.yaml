@@ -6,10 +6,10 @@ metadata:
   labels:
     {{- include "bap.labels" . | nindent 4 }}
 data:
-  # Verbatim from the Compose stack. Targets resolve by Service name:
-  # litellm:4000, and ai-server:9100 / :9400 via the selector-less ai-server Service.
+  # From the Compose stack. litellm:4000 resolves by Service name; the external
+  # ai-server has no Service here, so its scrape targets are rewritten to the IP.
   prometheus.yml: |
-{{ .Files.Get "files/prometheus/prometheus.yml" | indent 4 }}
+{{ .Files.Get "files/prometheus/prometheus.yml" | replace "ai-server:9100" (printf "%s:9100" .Values.aiServer.ip) | replace "ai-server:9400" (printf "%s:9400" .Values.aiServer.ip) | indent 4 }}
 ---
 apiVersion: v1
 kind: Service

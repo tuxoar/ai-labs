@@ -4,17 +4,17 @@
 # cluster or values-talos.yaml for the GitOps/Talos deployment.
 
 # --- The external model server (Ollama/vLLM on the RTX 5080 box) --------------
-# Reached in-cluster through a selector-less Service named "ai-server" that
-# points at this IP. Ports: 11434 (OpenAI API), 9100 (node_exporter),
-# 9400 (dcgm-exporter). LiteLLM and Prometheus address it by the name "ai-server".
+# Addressed by IP directly — NO in-cluster Service. (A selector-less Service would
+# need a hand-authored Endpoints/EndpointSlice, and ArgoCD here excludes both.)
+# LiteLLM connects to localAi.baseUrl; Prometheus scrapes ip:9100/:9400 via a
+# ScrapeConfig (existing kube-prom) or static targets (bundled prometheus).
 aiServer:
   ip: "10.6.6.13"
-  ollamaPort: 11434
   nodeExporterPort: 9100
   dcgmPort: 9400
-# LiteLLM points here; keep in sync with aiServer.ip. Path must end in /v1.
+# LiteLLM points here. Keep the host in sync with aiServer.ip; path ends in /v1.
 localAi:
-  baseUrl: "http://ai-server:11434/v1"
+  baseUrl: "http://10.6.6.13:11434/v1"
   apiKey: "none"
 
 # --- Secrets -----------------------------------------------------------------
@@ -130,13 +130,21 @@ grafana:
 # Only meaningful when the bundled prometheus/grafana above are disabled.
 monitoring:
   serviceMonitors:
-    # Emit ServiceMonitors for LiteLLM (:4000/metrics) and the external ai-server
-    # (node_exporter :9100, dcgm :9400). Your kube-prom-stack has
-    # serviceMonitorSelectorNilUsesHelmValues=false, so it scrapes these with no
-    # extra label; add labels here only if you tighten that selector later.
+    # Emit a ServiceMonitor for LiteLLM (:4000/metrics). Your kube-prom-stack has
+    # serviceMonitorSelectorNilUsesHelmValues=false, so it's scraped with no extra
+    # label; add labels here only if you tighten that selector later.
     enabled: false
     interval: 15s
     labels: {}
+  scrapeConfig:
+    # Scrape the external ai-server (node_exporter :9100, dcgm :9400) via a
+    # Prometheus-Operator ScrapeConfig with static IP targets — no Service needed.
+    # scrapeConfigSelectorNilUsesHelmValues defaults true, so the Prometheus
+    # selects ScrapeConfigs by `release: <helm release>`. selectorLabels must
+    # match that release (the kube-prom-stack ArgoCD Application name).
+    enabled: false
+    selectorLabels:
+      release: kube-prom-stack
   dashboards:
     # Render the LiteLLM dashboard as a ConfigMap the kube-prom Grafana sidecar
     # auto-imports. The sidecar watches its own namespace by default, so this
