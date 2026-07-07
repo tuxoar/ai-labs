@@ -32,7 +32,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: ai-server
-  # The selector-less ai-server Service + EndpointSlice exposes the external
+  # The selector-less ai-server Service + Endpoints exposes the external
   # node_exporter and dcgm-exporter; scrape both named ports.
   endpoints:
     - port: node-exporter

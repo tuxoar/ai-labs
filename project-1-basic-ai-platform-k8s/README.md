@@ -75,7 +75,7 @@ only exposes Open WebUI via the gateway.
 | `depends_on` + healthchecks | init-container TCP waits + readiness/liveness probes |
 | named volumes | PVCs (StatefulSet volumeClaimTemplates / Deployment PVC) |
 | `.env` | `values.yaml` + a Secret (generated locally, or Vault-synced on Talos) |
-| `extra_hosts: ai-server:<ip>` | selector-less **Service + EndpointSlice** named `ai-server` |
+| `extra_hosts: ai-server:<ip>` | selector-less **Service + Endpoints** named `ai-server` |
 | `DATABASE_URL` with inline password | password from Secret; URL composed via k8s `$(VAR)` env interpolation (plaintext URL never stored) |
 | published ports | ClusterIP everywhere; UIs exposed via NodePort (local) or Gateway API (Talos) |
 
@@ -105,18 +105,54 @@ Render without installing: `helm template bap . -f values-local.yaml -f values-s
 ## Wiring into GitOps
 
 `k8s-gitops/applications/92-basic-ai-platform.yaml` is an ArgoCD `Application`
-whose source is **this repo/path**, with `valueFiles: [values-talos.yaml]`. The
-existing app-of-apps auto-discovers it.
+whose source is **this repo/path** (public, over HTTPS —
+`https://github.com/tuxoar/ai-labs.git`), with `valueFiles: [values-talos.yaml]`.
+The existing app-of-apps auto-discovers it; no repo credentials are needed since
+ai-labs is public.
 
-**One-time prerequisite:** ArgoCD only has a deploy key for `k8s-gitops`. Give it
-read access to `tuxoar/ai-labs` too (a second deploy key + repo-credential Secret
-in the `argocd` namespace) — same steps as `k8s-gitops/docs/argocd-github-ssh.md`.
+External access is via the Cilium Gateway at `ai.nuahs.net` (Open WebUI);
+Grafana is the existing kube-prometheus-stack instance (see
+[Observability](#observability-bundled-vs-existing-kube-prometheus-stack)).
 
-The Talos overlay expects the secret keys to exist in Vault at
-`secret/basic-ai-platform` (KV-v2): `postgresPassword`, `litellmMasterKey`,
-`litellmSaltKey`, `webuiSecretKey`, `grafanaPassword`. VSO syncs them into the
-`basic-ai-platform-secrets` Secret. External access is via the Cilium Gateway at
-`ai.nuahs.net` (Open WebUI) and `grafana-ai.nuahs.net` (Grafana).
+### Secrets
+
+Every pod reads credentials from a Secret named `basic-ai-platform-secrets`
+(keys: `postgresPassword`, `litellmMasterKey`, `litellmSaltKey`,
+`webuiSecretKey`, `grafanaPassword`). There are two ways to provide it on Talos:
+
+**Vault (default for `values-talos.yaml`).** Store the five keys in Vault at
+`secret/basic-ai-platform` (KV-v2) and VSO syncs them into the Secret. You also
+need a Vault k8s-auth role `basic-ai-platform` bound to the `basic-ai-platform`
+ServiceAccount (mirrors the backstage setup in `k8s-gitops/docs/vault-setup.md`).
+
+**Manual Secret (no Vault yet).** If Vault isn't configured, the pods fail with
+`secret "basic-ai-platform-secrets" not found`. Create it by hand with random
+values:
+
+```bash
+kubectl -n basic-ai-platform create secret generic basic-ai-platform-secrets \
+  --from-literal=postgresPassword="$(openssl rand -base64 32 | tr -d '\n/+=' | cut -c1-40)" \
+  --from-literal=litellmMasterKey="sk-$(openssl rand -base64 32 | tr -d '\n/+=' | cut -c1-40)" \
+  --from-literal=litellmSaltKey="$(openssl rand -hex 32)" \
+  --from-literal=webuiSecretKey="$(openssl rand -hex 32)" \
+  --from-literal=grafanaPassword="$(openssl rand -base64 24 | tr -d '\n/+=' | cut -c1-32)" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Then layer **`values-manual-secret.yaml`** after `values-talos.yaml` so the chart
+references that Secret and stops rendering the Vault objects (otherwise VSO and
+ArgoCD self-heal fight over ownership of the same-named Secret):
+
+```yaml
+# in k8s-gitops/applications/92-basic-ai-platform.yaml
+    helm:
+      valueFiles:
+        - values-talos.yaml
+        - values-manual-secret.yaml
+```
+
+If pods were already crash-looping on the missing Secret, restart them:
+`kubectl -n basic-ai-platform rollout restart deploy/litellm deploy/open-webui statefulset/postgres`.
 
 ## Keeping configs in sync with the Compose stack
 

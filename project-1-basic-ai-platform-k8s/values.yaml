@@ -24,6 +24,18 @@ localAi:
 #   vault.enabled=true     -> chart renders SA + VaultAuth + VaultStaticSecret; VSO
 #                             syncs the named Secret from Vault (Talos/prod).
 #   existingSecret set     -> use a Secret you created out-of-band; chart renders neither.
+#
+# MANUAL SECRET (no Vault): when Vault isn't set up yet, create the Secret by hand
+# and point the chart at it with existingSecret (also set create=false,
+# vault.enabled=false, e.g. via values-manual-secret.yaml):
+#
+#   kubectl -n basic-ai-platform create secret generic basic-ai-platform-secrets \
+#     --from-literal=postgresPassword="$(openssl rand -base64 32 | tr -d '\n/+=' | cut -c1-40)" \
+#     --from-literal=litellmMasterKey="sk-$(openssl rand -base64 32 | tr -d '\n/+=' | cut -c1-40)" \
+#     --from-literal=litellmSaltKey="$(openssl rand -hex 32)" \
+#     --from-literal=webuiSecretKey="$(openssl rand -hex 32)" \
+#     --from-literal=grafanaPassword="$(openssl rand -base64 24 | tr -d '\n/+=' | cut -c1-32)" \
+#     --dry-run=client -o yaml | kubectl apply -f -
 secrets:
   secretName: basic-ai-platform-secrets
   create: true
@@ -70,8 +82,10 @@ litellm:
   image: ghcr.io/berriai/litellm:main-stable
   port: 4000
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { memory: 1Gi }
+    # LiteLLM's baseline RSS is ~600Mi-1Gi and spikes higher on startup with a
+    # large model_list + the prometheus callback + DB store, so 1Gi OOM-kills it.
+    requests: { cpu: 100m, memory: 512Mi }
+    limits: { memory: 2Gi }
 
 # --- Open WebUI --------------------------------------------------------------
 openWebui:
