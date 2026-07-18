@@ -170,8 +170,27 @@ project-1-basic-ai-platform/
 
 ## Roadmap
 
+Synced with the [learning plan](../Learn_Labs_Plan.md) (2026 revision) — the
+remaining items are its Month 1 "hardening pass."
+
 - [x] Gateway + UI + Postgres/pgvector + Redis on Compose
 - [x] App, host, and GPU observability (Prometheus + Grafana)
-- [ ] Per-user LiteLLM API keys + budgets (governance foundation → Project 4)
-- [ ] RAG ingestion into pgvector (→ Project 2)
-- [ ] Port to Kubernetes manifests + ArgoCD on Talos (GitOps)
+- [x] Port to Kubernetes + ArgoCD on Talos → [`../project-1-basic-ai-platform-k8s`](../project-1-basic-ai-platform-k8s)
+
+### Hardening pass (Month 1)
+
+- [ ] Per-user LiteLLM virtual keys + budgets + per-key model allow-lists
+      (retire the master key from Open WebUI)
+- [ ] NetworkPolicies in the k8s variant: default-deny, egress only to
+      `ai-server:11434` + DNS; firewall the unauthenticated exporters
+- [ ] Kyverno policies: image digests, no root/privileged, resource limits;
+      Cosign signature verification + Trivy SBOMs in CI
+- [ ] LiteLLM guardrail hooks (prompt-injection detection / content filtering)
+      + documented audit-log retention and access
+- [ ] CI job: `helm template` + kubeconform, Trivy scans, smoke tests
+      (prompt-injection regression suite lands with the Month 2 red-team harness)
+- [ ] Threat model at `docs/threat-model.md` (OWASP LLM Top 10 2025 categories)
+
+### Later (per plan)
+
+- [ ] RAG ingestion into pgvector (Month 1 compressed RAG exercise)
