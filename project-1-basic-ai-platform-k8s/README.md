@@ -35,9 +35,36 @@ values.yaml            # defaults + every toggle, documented inline
 values-local.yaml      # laptop cluster: default SC, NodePort, generated Secret
 values-talos.yaml      # GitOps: openebs-replicated, Cilium gateway, Vault secrets
 files/                 # verbatim configs from the Compose stack (ConfigMap sources)
-templates/             # one file per component + secrets, ai-server, gateway
+templates/             # one file per component + secrets, gateway, policies
 scripts/gen-secret-values.sh   # random secrets for local installs (gitignored output)
+scripts/provision-keys.sh      # mint scoped LiteLLM virtual keys (idempotent)
+scripts/smoke-test.sh          # end-to-end checks incl. negative governance tests
+scripts/ci-validate.sh         # helm lint/template + kubeconform (same as CI)
 ```
+
+## Security hardening
+
+Threat model (trust boundaries, OWASP LLM Top 10 2025 mapping, accepted-risk
+register): [`../project-1-basic-ai-platform/docs/threat-model.md`](../project-1-basic-ai-platform/docs/threat-model.md)
+
+- **Virtual keys** — Open WebUI runs on a scoped key (model allow-list, $50/30d
+  budget, 100k TPM / 60 RPM), minted by `scripts/provision-keys.sh`; the master
+  key is held by no consumer. Bootstrap order on a fresh install:
+  `install → provision-keys.sh → persist keys in Vault → open-webui starts`.
+- **CiliumNetworkPolicies** (`networkPolicy.enabled`) — default-deny; the only
+  path to the auth-less model server is litellm → `aiServer.ip:11434`.
+  Two-step rollout: allow-policies first, then `networkPolicy.defaultDeny=true`
+  after `hubble observe --verdict DROPPED` stays quiet for a full cycle.
+- **Kyverno policies** (`kyverno.enabled`, needs the cluster-level Kyverno
+  install) — require digests, restrict registries, require resources, disallow
+  root (litellm excepted, documented). `validationFailureAction`: Audit →
+  Enforce once `kubectl get policyreport -n basic-ai-platform` is clean.
+  Enforce blocks pod creation, not ArgoCD sync: a bad image bump surfaces as a
+  Degraded ReplicaSet with the admission message.
+- **Pods** — digest-pinned images, non-root where images allow, seccomp,
+  no capabilities, no SA tokens; PSA enforce=baseline, warn/audit=restricted.
+- **Gateway controls** — heuristic prompt-injection guardrail on every call;
+  prompts/responses audited to `LiteLLM_SpendLogs`, 90d retention.
 
 ## Observability: bundled vs. existing kube-prometheus-stack
 

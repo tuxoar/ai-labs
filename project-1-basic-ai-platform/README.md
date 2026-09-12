@@ -100,13 +100,13 @@ they map to real Ollama models on `ai-server`.
 
 ```bash
 cd project-1-basic-ai-platform
-cp .env.example .env
+./scripts/gen-env.sh           # writes .env with random secrets (chmod 600)
 ```
 
-Edit `.env`:
-- `LOCAL_AI_BASE_URL` → your Ollama endpoint, e.g. `http://<ai-server>:11434/v1`
-- `AI_SERVER_IP` → the AI server's IP/host (used by Prometheus to scrape exporters)
-- Generate each secret with `openssl rand -hex 32`
+Override the connectivity values if your model server differs from the default:
+- `AI_SERVER_IP=<ip> ./scripts/gen-env.sh` — the AI server's IP (LiteLLM target
+  + Prometheus exporter scrapes)
+- `LOCAL_AI_BASE_URL=http://<host>:11434/v1` for a non-default endpoint
 
 Bring it up and verify:
 
@@ -140,7 +140,6 @@ can *see* the model spill from GPU to RAM, right next to the latency panel.
 ```
 project-1-basic-ai-platform/
 ├── docker-compose.yml          all services + the aiplat network
-├── .env.example                config template (copy to .env, gitignored)
 ├── litellm/config.yaml         gateway: model routing, Redis cache, Postgres, metrics
 ├── postgres/init/01-init.sql   creates litellm/openwebui/knowledge DBs + pgvector
 ├── prometheus/prometheus.yml   scrape jobs: litellm, node-ai-server, dcgm-ai-server
@@ -166,7 +165,16 @@ project-1-basic-ai-platform/
 - Only Open WebUI (`:3000`) and the dashboards are meant for users; the data
   stores (`:5432`, `:6379`) stay on the internal `aiplat` network.
 - Prometheus exporters serve unauthenticated metrics — keep `:9100`/`:9400`
-  firewalled to the monitoring host (see the monitoring doc).
+  firewalled to the monitoring host, and `:11434` (unauthenticated inference +
+  model management) to the k8s nodes + admin host (see the monitoring doc).
+- Full analysis: [`docs/threat-model.md`](docs/threat-model.md) (OWASP LLM
+  Top 10 2025 — trust boundaries, controls, accepted-risk register).
+- **Variant divergence (deliberate, k8s-first):** the Compose stack still uses
+  the LiteLLM master key from Open WebUI and has no NetworkPolicy/Kyverno
+  equivalent; scoped virtual keys, CNPs, and admission policy are enforced in
+  the [k8s variant](../project-1-basic-ai-platform-k8s). The two
+  `litellm/config.yaml` files (and the guardrail hook) stay byte-identical —
+  CI enforces the parity.
 
 ## Roadmap
 
@@ -179,17 +187,20 @@ remaining items are its Month 1 "hardening pass."
 
 ### Hardening pass (Month 1)
 
-- [ ] Per-user LiteLLM virtual keys + budgets + per-key model allow-lists
-      (retire the master key from Open WebUI)
-- [ ] NetworkPolicies in the k8s variant: default-deny, egress only to
-      `ai-server:11434` + DNS; firewall the unauthenticated exporters
-- [ ] Kyverno policies: image digests, no root/privileged, resource limits;
-      Cosign signature verification + Trivy SBOMs in CI
-- [ ] LiteLLM guardrail hooks (prompt-injection detection / content filtering)
-      + documented audit-log retention and access
-- [ ] CI job: `helm template` + kubeconform, Trivy scans, smoke tests
-      (prompt-injection regression suite lands with the Month 2 red-team harness)
-- [ ] Threat model at `docs/threat-model.md` (OWASP LLM Top 10 2025 categories)
+- [x] Per-user LiteLLM virtual keys + budgets + per-key model allow-lists
+      (master key retired from Open WebUI — k8s variant; Compose stays on the
+      master key by design, see Security model)
+- [x] NetworkPolicies in the k8s variant: default-deny CNPs, egress pinhole to
+      `ai-server:11434` + DNS; exporter + Ollama firewall documented
+- [x] Kyverno policies: image digests, no root/privileged, resource requests +
+      memory limits; cosign verify (LiteLLM — the only signing upstream) +
+      Trivy SBOMs in CI
+- [x] LiteLLM guardrail hook (heuristic prompt-injection detection, blocking +
+      flagging tiers) + audit logs in SpendLogs with 90d retention
+- [x] CI: helm template + kubeconform, Trivy config/image gates, shellcheck,
+      SBOM artifacts (prompt-injection regression suite lands with the Month 2
+      red-team harness)
+- [x] Threat model at [`docs/threat-model.md`](docs/threat-model.md)
 
 ### Later (per plan)
 

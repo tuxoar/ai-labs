@@ -178,6 +178,28 @@ if [ -n "$OPENWEBUI_KEY" ]; then
   else bad "openwebui key has no budget/limits -> ${info:0:140}"; fi
 fi
 
+# 8. Network policy: the egress pinhole (needs exec; skipped when CNPs absent).
+hr "network policy (egress pinhole)"
+if kubectl -n "$NS" get ciliumnetworkpolicy litellm >/dev/null 2>&1; then
+  AI_HOST=$(kubectl -n "$NS" get deploy litellm \
+    -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="LOCAL_AI_BASE_URL")].value}' \
+    | sed -E 's|https?://||; s|:.*||')
+  probe() { # deploy host port -> 0 if TCP connect succeeds within 3s
+    kubectl -n "$NS" exec "deploy/$1" -- python3 -c \
+      "import socket;socket.create_connection(('$2',$3),3)" >/dev/null 2>&1
+  }
+  if probe litellm "$AI_HOST" 11434; then ok "litellm CAN reach the model server ($AI_HOST:11434)"
+  else bad "litellm cannot reach the model server — pinhole broken"; fi
+  if probe litellm 1.1.1.1 80; then bad "litellm reached 1.1.1.1:80 — egress NOT locked down"
+  else ok "litellm denied general egress (1.1.1.1:80)"; fi
+  if probe open-webui redis 6379; then bad "open-webui reached redis — lateral movement possible"
+  else ok "open-webui denied redis:6379"; fi
+  if probe open-webui "$AI_HOST" 11434; then bad "open-webui reached the model server DIRECTLY — gateway bypass"
+  else ok "open-webui denied the model server (must go through litellm)"; fi
+else
+  echo "  INFO: no CiliumNetworkPolicy 'litellm' in ns/$NS — skipping egress probes"
+fi
+
 # --- summary ---
 hr "summary"
 echo "  passed: $pass   failed: $fail"

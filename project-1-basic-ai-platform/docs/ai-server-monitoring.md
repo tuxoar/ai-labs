@@ -195,6 +195,23 @@ sudo ufw allow from <LAN_SUBNET> to any port 9400 proto tcp
 # ... or lock to a single host: replace <LAN_SUBNET> with <MONITORING_HOST_IP>/32
 ```
 
+**Also firewall Ollama itself (`:11434`).** The exporters only leak metrics;
+`11434` serves unauthenticated inference AND model management (pull/delete).
+Allow only the Kubernetes node subnet (for the LiteLLM egress pinhole) and the
+admin workstation, deny the rest:
+
+```bash
+sudo ufw allow from <K8S_NODE_CIDR>    to any port 11434 proto tcp
+sudo ufw allow from <ADMIN_HOST_IP>/32 to any port 11434 proto tcp
+sudo ufw deny  11434/tcp
+# record the applied state alongside this doc:
+sudo ufw status numbered
+```
+
+In-cluster, the same boundary is enforced from the other side: the
+CiliumNetworkPolicy in the k8s chart lets ONLY the litellm pods egress to
+`11434` (see `docs/threat-model.md`, boundary TB3).
+
 If `ufw` is inactive and the box is on a trusted LAN, you can skip this — but see
 Security notes below.
 
@@ -202,31 +219,35 @@ Security notes below.
 
 ## Part 6 — Wire into Prometheus (platform side)
 
-Back on the **dev host**, add two scrape jobs to
-`project-1-basic-ai-platform/prometheus/prometheus.yml`:
+Both scrape jobs already ship in
+`project-1-basic-ai-platform/prometheus/prometheus.yml` using the hostname
+`ai-server`, which the compose file resolves via `extra_hosts` from the
+`AI_SERVER_IP` value in `.env` (so the IP stays out of git):
 
 ```yaml
   - job_name: node-ai-server
     static_configs:
-      - targets: ["<ai-server>:9100"]
+      - targets: ["ai-server:9100"]
         labels:
           host: ai-server
 
   - job_name: dcgm-ai-server
     static_configs:
-      - targets: ["<ai-server>:9400"]
+      - targets: ["ai-server:9400"]
         labels:
           host: ai-server
 ```
 
-Reload Prometheus to pick them up:
+If you change `AI_SERVER_IP` or the scrape config, restart Prometheus:
 
 ```bash
 cd project-1-basic-ai-platform
 docker compose restart prometheus
-# or hot-reload without restart (Prometheus must be started with --web.enable-lifecycle):
-# curl -X POST http://localhost:9090/-/reload
 ```
+
+(The k8s variant scrapes the same targets via a Prometheus-Operator
+`ScrapeConfig` with static IP targets — see the chart's
+`templates/servicemonitors.yaml`.)
 
 ---
 
