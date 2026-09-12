@@ -12,6 +12,7 @@ npm-debug.log*
 # Env & secrets
 .env
 .env.*
+provision-keys.out.env
 
 # Helm — generated local secret overrides
 values-secret*.yaml

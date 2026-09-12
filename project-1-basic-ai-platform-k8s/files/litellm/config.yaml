@@ -6,6 +6,11 @@
 
 # Models on the Ollama server at 10.6.6.13 (senai). RTX 5080 16GB + 128GB RAM.
 # Tier 1 = fits in VRAM (fast); Tier 2/3 = RAM offload via llama.cpp (slower).
+#
+# Local models are free, but every model carries a NOMINAL per-token cost so the
+# virtual-key budget/spend machinery is real and demonstrable: Tier 1 chat
+# 1/2 per M tokens (in/out), Tier 2/3 3/6 per M (scarcer: RAM offload evicts the
+# VRAM residents), embeddings 0.1 per M. Budgets on keys are sized against these.
 model_list:
   # --- Tier 1: fast, VRAM-resident chat (interactive daily drivers) ---
   - model_name: llama3                 # 8B, original default
@@ -13,6 +18,8 @@ model_list:
       model: openai/llama3:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
       # This Ollama model has no tool support; drop tools so Open WebUI requests
       # that include them degrade to plain chat instead of a 400 from Ollama.
       additional_drop_params: ["tools", "tool_choice"]
@@ -22,12 +29,16 @@ model_list:
       model: openai/llama3.1:8b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
 
   - model_name: gemma2                 # 9B
     litellm_params:
       model: openai/gemma2:9b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
       additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   - model_name: phi4                   # 14B
@@ -35,6 +46,8 @@ model_list:
       model: openai/phi4:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
       additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   - model_name: qwen2.5                # 14B, strong general model
@@ -42,6 +55,8 @@ model_list:
       model: openai/qwen2.5:14b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
 
   # --- Coding ---
   - model_name: coder                  # Qwen2.5-Coder 14B
@@ -49,12 +64,16 @@ model_list:
       model: openai/qwen2.5-coder:14b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
 
   - model_name: deepseek-coder         # DeepSeek-Coder-V2 16B MoE
     litellm_params:
       model: openai/deepseek-coder-v2:16b
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
       additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
   # --- Tier 2/3: larger, partial RAM offload (reasoning / quality batch) ---
@@ -63,6 +82,8 @@ model_list:
       model: openai/qwen3.6:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000003
+      output_cost_per_token: 0.000006
 
   # kimi-k2 (1T) is proxied to ollama.com's cloud and returns 401 unless the
   # Ollama daemon on senai is signed in (`ollama signin`). Disabled until then.
@@ -80,18 +101,21 @@ model_list:
       model: openai/nomic-embed-text:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.0000001
 
   - model_name: embed-bge-m3           # 1024 dims, 8k ctx — hybrid (dense+sparse)
     litellm_params:
       model: openai/bge-m3:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.0000001
 
   - model_name: embed-arctic2          # 1024 dims — benchmark contender
     litellm_params:
       model: openai/snowflake-arctic-embed2:latest
       api_base: os.environ/LOCAL_AI_BASE_URL
       api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.0000001
 
 litellm_settings:
   drop_params: true
