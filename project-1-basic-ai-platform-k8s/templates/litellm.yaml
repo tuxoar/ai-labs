@@ -45,10 +45,17 @@ spec:
         # Roll the pod when the config changes so edits take effect on sync.
         checksum/config: {{ .Files.Get "files/litellm/config.yaml" | sha256sum }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.litellm.podSecurityContext | nindent 8 }}
       initContainers:
         # Mirror Compose depends_on: block until Postgres and Redis accept connections.
         - name: wait-deps
-          image: busybox:1.36
+          image: {{ .Values.init.image }}
+          securityContext:
+            {{- toYaml .Values.init.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.init.resources | nindent 12 }}
           command:
             - sh
             - -c
@@ -58,6 +65,8 @@ spec:
       containers:
         - name: litellm
           image: {{ .Values.litellm.image }}
+          securityContext:
+            {{- toYaml .Values.litellm.containerSecurityContext | nindent 12 }}
           args: ["--config", "/app/config.yaml", "--port", "{{ .Values.litellm.port }}"]
           env:
             - name: LITELLM_MASTER_KEY

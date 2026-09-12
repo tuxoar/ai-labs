@@ -61,11 +61,14 @@ spec:
       annotations:
         checksum/config: {{ .Files.Get "files/prometheus/prometheus.yml" | sha256sum }}
     spec:
+      automountServiceAccountToken: false
       securityContext:
-        fsGroup: 65534       # nobody — lets Prometheus write to the PVC
+        {{- toYaml .Values.prometheus.podSecurityContext | nindent 8 }}
       containers:
         - name: prometheus
           image: {{ .Values.prometheus.image }}
+          securityContext:
+            {{- toYaml .Values.prometheus.containerSecurityContext | nindent 12 }}
           args:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.path=/prometheus

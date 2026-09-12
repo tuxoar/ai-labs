@@ -47,14 +47,26 @@ spec:
       labels:
         {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.openWebui.podSecurityContext | nindent 8 }}
       initContainers:
         - name: wait-litellm
-          image: busybox:1.36
+          image: {{ .Values.init.image }}
+          securityContext:
+            {{- toYaml .Values.init.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.init.resources | nindent 12 }}
           command: ["sh", "-c", "until nc -z litellm {{ .Values.litellm.port }}; do echo waiting for litellm; sleep 2; done"]
       containers:
         - name: open-webui
           image: {{ .Values.openWebui.image }}
+          securityContext:
+            {{- toYaml .Values.openWebui.containerSecurityContext | nindent 12 }}
           env:
+            # Non-root: point caches/dotfiles at the writable data PVC.
+            - name: HOME
+              value: /app/backend/data
             # Talk only to LiteLLM — one OpenAI-compatible gateway, no direct model access.
             - name: OPENAI_API_BASE_URL
               value: "http://litellm:{{ .Values.litellm.port }}/v1"

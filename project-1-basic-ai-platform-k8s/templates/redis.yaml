@@ -30,9 +30,14 @@ spec:
       labels:
         {{- include "bap.selectorLabels" (dict "component" "redis") | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.redis.podSecurityContext | nindent 8 }}
       containers:
         - name: redis
           image: {{ .Values.redis.image }}
+          securityContext:
+            {{- toYaml .Values.redis.containerSecurityContext | nindent 12 }}
           # Same persistence + log level as the Compose command.
           args: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
           ports:

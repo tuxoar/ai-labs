@@ -11,7 +11,7 @@ name: basic-ai-platform
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -28,7 +28,7 @@ services:
     networks: [aiplat]
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
@@ -41,7 +41,7 @@ services:
     networks: [aiplat]
 
   litellm:
-    image: ghcr.io/berriai/litellm:main-stable
+    image: ghcr.io/berriai/litellm:main-stable@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834
     restart: unless-stopped
     depends_on:
       postgres:
@@ -62,7 +62,7 @@ services:
     networks: [aiplat]
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:main@sha256:6a773e5c3a246b65cbe74ce942b294292c0e5f81c138f703d111bc162f7d7c3d
     restart: unless-stopped
     depends_on:
       - litellm
@@ -80,7 +80,7 @@ services:
     networks: [aiplat]
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:latest@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
     restart: unless-stopped
     # Resolve "ai-server" to the real host (kept in .env, out of prometheus.yml).
     extra_hosts:
@@ -93,7 +93,7 @@ services:
     networks: [aiplat]
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:latest@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
     restart: unless-stopped
     depends_on:
       - prometheus

@@ -63,9 +63,29 @@ secrets:
     role: basic-ai-platform
     refreshAfter: 60s
 
+# --- Init containers (wait-for-deps) ------------------------------------------
+# Shared by the litellm / open-webui initContainers. Digest-pinned and given
+# explicit resources + a non-root context so policy (require-digests,
+# require-resources, disallow-root) holds for EVERY container in the namespace.
+init:
+  image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+  resources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 64Mi }
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
+    seccompProfile: { type: RuntimeDefault }
+
 # --- Postgres (pgvector) -----------------------------------------------------
+# Images are pinned tag@digest: the tag is for humans, the digest is the pin.
+# Bump procedure: docker buildx imagetools inspect <repo:tag> | grep Digest
 postgres:
-  image: pgvector/pgvector:pg16
+  image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
   user: aiplat
   db: aiplat          # bootstrap DB; init SQL also creates litellm/openwebui/knowledge
   storage:
@@ -74,36 +94,82 @@ postgres:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
+  # Debian postgres runs as uid/gid 999; read-only root needs /var/run/postgresql
+  # and /tmp as emptyDirs (wired in the template).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
 
 # --- Redis (LiteLLM response cache) ------------------------------------------
 redis:
-  image: redis:7-alpine
+  image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
   storage:
     size: 2Gi
     storageClassName: ""
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999          # alpine redis uid/gid
+    runAsGroup: 999
+    fsGroup: 999
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
 
 # --- LiteLLM gateway ---------------------------------------------------------
 litellm:
-  image: ghcr.io/berriai/litellm:main-stable
+  image: ghcr.io/berriai/litellm:main-stable@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834
   port: 4000
   resources:
     # LiteLLM's baseline RSS is ~600Mi-1Gi and spikes higher on startup with a
     # large model_list + the prometheus callback + DB store, so 1Gi OOM-kills it.
     requests: { cpu: 100m, memory: 512Mi }
     limits: { memory: 2Gi }
+  # ACCEPTED EXCEPTION (threat model): runs as root — the image regenerates the
+  # prisma client into site-packages at startup when a database_url is set.
+  # Stretch: migrate to BerriAI's non-root image variant. Everything else is
+  # locked down: no privilege escalation, all capabilities dropped, seccomp.
+  podSecurityContext:
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # prisma generate writes at startup
+    capabilities: { drop: ["ALL"] }
 
 # --- Open WebUI --------------------------------------------------------------
 openWebui:
-  image: ghcr.io/open-webui/open-webui:main
+  image: ghcr.io/open-webui/open-webui:main@sha256:6a773e5c3a246b65cbe74ce942b294292c0e5f81c138f703d111bc162f7d7c3d
   storage:
     size: 5Gi
     storageClassName: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
+  # Non-root attempt: start.sh needs no root; caches/HOME are pointed at the
+  # data PVC (HOME env in the template), fsGroup makes prior root-owned PVC
+  # files group-accessible. If it crashloops, fall back to root-with-baseline
+  # (remove runAsNonRoot/runAsUser) and record the exception in the threat model.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # python writes tmp/cache paths outside the PVC
+    capabilities: { drop: ["ALL"] }
 
 # --- Observability -----------------------------------------------------------
 # Two modes:
@@ -114,18 +180,28 @@ openWebui:
 #     kube-prometheus-stack scrapes LiteLLM/ai-server and imports the dashboard.
 prometheus:
   enabled: true
-  image: prom/prometheus:latest
+  image: prom/prometheus:latest@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
   storage:
     size: 10Gi
     storageClassName: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65534        # nobody — the image's default user
+    runAsGroup: 65534
+    fsGroup: 65534
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
 
 # --- Grafana -----------------------------------------------------------------
 grafana:
   enabled: true
-  image: grafana/grafana:latest
+  image: grafana/grafana:latest@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283
   user: admin
   storage:
     size: 2Gi
@@ -133,6 +209,16 @@ grafana:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 472          # grafana — the image's default user
+    runAsGroup: 472
+    fsGroup: 472
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true   # /tmp is an emptyDir in the template
+    capabilities: { drop: ["ALL"] }
 
 # --- Integration with an EXISTING kube-prometheus-stack ----------------------
 # Only meaningful when the bundled prometheus/grafana above are disabled.

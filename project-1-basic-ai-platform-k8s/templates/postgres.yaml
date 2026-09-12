@@ -42,9 +42,14 @@ spec:
       labels:
         {{- include "bap.selectorLabels" (dict "component" "postgres") | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.postgres.podSecurityContext | nindent 8 }}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image }}
+          securityContext:
+            {{- toYaml .Values.postgres.containerSecurityContext | nindent 12 }}
           env:
             - name: POSTGRES_USER
               value: {{ .Values.postgres.user | quote }}
@@ -67,6 +72,11 @@ spec:
             - name: init
               mountPath: /docker-entrypoint-initdb.d
               readOnly: true
+            # Writable scratch for read-only root filesystem.
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "{{ .Values.postgres.user }}", "-d", "{{ .Values.postgres.db }}"]
@@ -85,6 +95,10 @@ spec:
         - name: init
           configMap:
             name: postgres-init
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
