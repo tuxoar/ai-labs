@@ -37,6 +37,11 @@ secrets:
     litellmSaltKey: "$(hex 32)"
     webuiSecretKey: "$(hex 32)"
     grafanaPassword: "$(secret 24 32)"
+    # Scoped LiteLLM virtual keys: cannot be generated here — they are runtime
+    # state minted by the gateway. After install, run scripts/provision-keys.sh
+    # and paste the resulting keys below, then helm upgrade.
+    openwebuiApiKey: ""
+    smokeTestApiKey: ""
 EOF
 
 echo "Wrote $OUT (mode 600). Pass it after values-local.yaml on helm install."

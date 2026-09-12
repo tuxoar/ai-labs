@@ -37,4 +37,10 @@ Access (port-forward; or use NodePort with `kubectl get svc -n {{ .Release.Names
   kubectl -n {{ .Release.Namespace }} port-forward svc/litellm    4000:4000   # gateway API
 {{- end }}
 
+Bootstrap order (fresh install): open-webui stays in CreateContainerConfigError
+until the scoped virtual key exists in the Secret —
+  1. install (this)            2. ./scripts/provision-keys.sh
+  3. persist keys ({{ if .Values.secrets.vault.enabled }}vault kv patch {{ .Values.secrets.vault.mount }}/{{ .Values.secrets.vault.path }} …{{ else }}add to the Secret/values{{ end }})
+  4. open-webui starts         5. ./scripts/smoke-test.sh
+
 Check rollout:  kubectl -n {{ .Release.Namespace }} get pods

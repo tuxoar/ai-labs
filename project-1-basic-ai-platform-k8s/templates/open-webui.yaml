@@ -58,11 +58,15 @@ spec:
             # Talk only to LiteLLM — one OpenAI-compatible gateway, no direct model access.
             - name: OPENAI_API_BASE_URL
               value: "http://litellm:{{ .Values.litellm.port }}/v1"
+            # Scoped virtual key (model allow-list + budget + TPM/RPM limits),
+            # minted by scripts/provision-keys.sh — NOT the master key. On a
+            # fresh install the pod waits in CreateContainerConfigError until
+            # provisioning has run (install -> provision-keys -> webui starts).
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "bap.secretName" . }}
-                  key: litellmMasterKey
+                  key: openwebuiApiKey
             - name: WEBUI_SECRET_KEY
               valueFrom:
                 secretKeyRef:

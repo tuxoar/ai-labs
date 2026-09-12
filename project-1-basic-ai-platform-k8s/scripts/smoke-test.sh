@@ -22,9 +22,21 @@ while getopts "n:" opt; do case "$opt" in n) NS="$OPTARG" ;; *) ;; esac; done
 command -v kubectl >/dev/null 2>&1 || { echo "FAIL: kubectl not found"; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not found"; exit 1; }
 
-# --- gateway key from the cluster Secret ---
+# --- gateway keys from the cluster Secret ---
 MASTER_KEY=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.litellmMasterKey}' 2>/dev/null | base64 -d 2>/dev/null)
 [ -n "$MASTER_KEY" ] || { echo "FAIL: could not read litellmMasterKey from secret/$SECRET in ns/$NS"; exit 1; }
+
+# Prefer the scoped smoke-test virtual key (least privilege); fall back to the
+# master key only on a fresh install where provision-keys.sh hasn't run yet.
+SMOKE_KEY=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.smokeTestApiKey}' 2>/dev/null | base64 -d 2>/dev/null)
+OPENWEBUI_KEY=$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.openwebuiApiKey}' 2>/dev/null | base64 -d 2>/dev/null)
+if [ -n "$SMOKE_KEY" ]; then
+  GATEWAY_KEY="$SMOKE_KEY"
+else
+  GATEWAY_KEY="$MASTER_KEY"
+  echo "WARN: no smokeTestApiKey in secret/$SECRET — using the master key." \
+       "Run scripts/provision-keys.sh to mint scoped keys."
+fi
 
 # --- port-forward the Services, clean up on exit ---
 pids=()
@@ -40,7 +52,7 @@ pf open-webui "$WEBUI_LPORT"   3000
 
 LITELLM="http://localhost:${LITELLM_LPORT}"
 WEBUI="http://localhost:${WEBUI_LPORT}"
-AUTH="Authorization: Bearer ${MASTER_KEY}"
+AUTH="Authorization: Bearer ${GATEWAY_KEY}"
 
 pass=0; fail=0
 ok()  { echo "  PASS: $1"; pass=$((pass+1)); }
@@ -137,6 +149,33 @@ except Exception: print('error')" 2>/dev/null)
     || echo "  INFO: litellm target state='${up}' (metrics may take a scrape interval)"
 else
   echo "  INFO: no svc/$PROM_SVC in ns/$PROM_NS — skipping (set PROM_NS/PROM_SVC for an external kube-prometheus-stack, e.g. PROM_NS=monitoring PROM_SVC=kube-prom-stack-prometheus)"
+fi
+
+# 7. Governance: virtual-key scoping (negative tests — a denial is a PASS).
+hr "virtual-key scoping"
+if [ -n "$SMOKE_KEY" ]; then
+  # 7a. A scoped key must NOT reach key-management routes.
+  code=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $SMOKE_KEY" -H "Content-Type: application/json" \
+    "$LITELLM/key/generate" -d '{}')
+  case "$code" in 4*) ok "scoped key denied /key/generate ($code)" ;;
+                  *)  bad "scoped key reached /key/generate ($code) — privilege escalation" ;; esac
+else
+  echo "  INFO: no smokeTestApiKey — skipping scoping tests (run provision-keys.sh)"
+fi
+if [ -n "$OPENWEBUI_KEY" ]; then
+  # 7b. The openwebui key's model allow-list must exclude the benchmark embedders.
+  code=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer $OPENWEBUI_KEY" -H "Content-Type: application/json" \
+    "$LITELLM/v1/embeddings" -d '{"model":"embed-bge-m3","input":"x"}')
+  case "$code" in 401|403) ok "openwebui key denied disallowed model embed-bge-m3 ($code)" ;;
+                  *)       bad "openwebui key was NOT denied on embed-bge-m3 ($code)" ;; esac
+  # 7c. Budget + rate limits are attached (read via master key on /key/info).
+  info=$(curl -s --max-time 10 -H "Authorization: Bearer $MASTER_KEY" \
+    "$LITELLM/key/info?key=$OPENWEBUI_KEY")
+  limits=$(echo "$info" | python3 -c "import sys,json;i=json.load(sys.stdin)['info'];print(f\"budget={i.get('max_budget')} tpm={i.get('tpm_limit')} rpm={i.get('rpm_limit')} models={len(i.get('models') or [])}\")" 2>/dev/null)
+  if echo "$limits" | grep -qv 'budget=None'; then ok "openwebui key limits: $limits"
+  else bad "openwebui key has no budget/limits -> ${info:0:140}"; fi
 fi
 
 # --- summary ---

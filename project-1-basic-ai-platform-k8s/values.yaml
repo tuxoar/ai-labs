@@ -36,6 +36,9 @@ localAi:
 #     --from-literal=webuiSecretKey="$(openssl rand -hex 32)" \
 #     --from-literal=grafanaPassword="$(openssl rand -base64 24 | tr -d '\n/+=' | cut -c1-32)" \
 #     --dry-run=client -o yaml | kubectl apply -f -
+#
+# plus, after first install, the scoped virtual keys from scripts/provision-keys.sh
+# (openwebuiApiKey, smokeTestApiKey — open-webui requires the former to start).
 secrets:
   secretName: basic-ai-platform-secrets
   create: true
@@ -47,6 +50,11 @@ secrets:
     litellmSaltKey: ""
     webuiSecretKey: ""
     grafanaPassword: ""
+    # Scoped LiteLLM virtual keys — minted by scripts/provision-keys.sh AFTER
+    # first install (runtime state in LiteLLM's DB), then added here (create
+    # mode) or written to Vault (vault mode). Optional: rendered only if set.
+    openwebuiApiKey: ""
+    smokeTestApiKey: ""
   vault:
     enabled: false
     # KV-v2 mount + path holding the 5 keys above (same key names, camelCase).
