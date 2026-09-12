@@ -21,6 +21,24 @@ app.kubernetes.io/name: {{ .component }}
 app.kubernetes.io/part-of: basic-ai-platform
 {{- end -}}
 
+{{/*
+Baseline DNS egress rule for CiliumNetworkPolicies: kube-dns only, with L7 DNS
+visibility (Hubble shows the queried names). Emitted as one list item.
+*/}}
+{{- define "bap.dnsEgress" -}}
+- toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+  toPorts:
+    - ports:
+        - port: "53"
+          protocol: ANY
+      rules:
+        dns:
+          - matchPattern: "*"
+{{- end -}}
+
 {{/* Name of the Secret holding all credentials. */}}
 {{- define "bap.secretName" -}}
 {{- if .Values.secrets.existingSecret -}}

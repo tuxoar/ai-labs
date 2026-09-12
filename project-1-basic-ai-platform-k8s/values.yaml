@@ -162,6 +162,15 @@ monitoring:
     label: grafana_dashboard
     labelValue: "1"
 
+# --- Network policy (CiliumNetworkPolicy) -------------------------------------
+# Least-privilege pod networking; see templates/networkpolicies.yaml for the
+# flow map. defaultDeny adds the namespace catch-all (no ingress, DNS-only
+# egress for anything not covered by a component policy) — enable it as a
+# SECOND step after verifying `hubble observe --verdict DROPPED` is quiet.
+networkPolicy:
+  enabled: false      # requires Cilium (CNP CRDs)
+  defaultDeny: false
+
 # --- External access ---------------------------------------------------------
 # service.type governs the "flat" exposure for laptop clusters (NodePort) vs
 # internal-only (ClusterIP). Gateway API (Cilium) is the Talos path.

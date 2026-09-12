@@ -1,0 +1,251 @@
+{{- if .Values.networkPolicy.enabled }}
+{{/*
+CiliumNetworkPolicies for the namespace — least-privilege L3/L4 with one
+deliberate egress pinhole: LiteLLM -> ai-server:11434 (the model server has no
+auth, so the ONLY pod allowed to reach it is the authenticated gateway).
+
+Cilium semantics: any policy with an ingress (egress) section flips the
+selected endpoints into default-deny for that direction. The per-component
+policies below therefore already lock down every workload pod; the extra
+"default-deny" policy (networkPolicy.defaultDeny, enable as a SECOND commit
+after verifying Hubble shows no drops) extends that to any OTHER pod that
+appears in the namespace: DNS-only egress, no ingress.
+
+Rollout: commit 1 = allow policies (this file, defaultDeny=false);
+watch `hubble observe -n <ns> --verdict DROPPED -f` through a full
+chat + scrape cycle; commit 2 = defaultDeny=true. Kubelet probes and
+`kubectl port-forward` arrive from the node host (reserved:host), which
+Cilium allows by default — no rule needed.
+*/}}
+{{- $ns := .Release.Namespace }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: open-webui
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Open WebUI: ingress only from the Cilium Gateway; egress only to LiteLLM + its DB"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 6 }}
+  ingress:
+    # Cilium Gateway API traffic (Envoy) carries the reserved "ingress" identity.
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "4000"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "postgres") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: litellm
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "LiteLLM: the only pod allowed egress to the (auth-less) model server"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "4000"
+              protocol: TCP
+    # kube-prometheus-stack scrape (ServiceMonitor) from the monitoring namespace.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .Values.monitoring.dashboards.namespace }}
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports:
+            - port: "4000"
+              protocol: TCP
+    {{- if .Values.prometheus.enabled }}
+    # Bundled Prometheus (laptop clusters).
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "prometheus") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "4000"
+              protocol: TCP
+    {{- end }}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "postgres") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "redis") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+    # THE egress pinhole: the model server, one IP, one port. First concrete
+    # instance of the Month-3 weight-security egress-control theme.
+    - toCIDRSet:
+        - cidr: {{ .Values.aiServer.ip }}/32
+      toPorts:
+        - ports:
+            - port: "11434"
+              protocol: TCP
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: postgres
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Postgres: reachable only from LiteLLM and Open WebUI; no egress beyond baseline DNS"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "postgres") | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: redis
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Redis: reachable only from LiteLLM; no egress beyond baseline DNS"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "redis") | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+{{- if .Values.prometheus.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: prometheus
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Bundled Prometheus: scraped by Grafana; scrapes LiteLLM and the ai-server exporters"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "prometheus") | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "grafana") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "4000"
+              protocol: TCP
+    - toCIDRSet:
+        - cidr: {{ .Values.aiServer.ip }}/32
+      toPorts:
+        - ports:
+            - port: {{ .Values.aiServer.nodeExporterPort | quote }}
+              protocol: TCP
+            - port: {{ .Values.aiServer.dcgmPort | quote }}
+              protocol: TCP
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+{{- end }}
+{{- if .Values.grafana.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Bundled Grafana: ingress from the Gateway; egress only to Prometheus"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "grafana") | nindent 6 }}
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "prometheus") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "9090"
+              protocol: TCP
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+{{- end }}
+{{- if .Values.networkPolicy.defaultDeny }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "Catch-all for any other pod in the namespace: no ingress, DNS-only egress"
+  endpointSelector: {}
+  ingress:
+    # Allow-rule that matches nothing: its presence flips every endpoint into
+    # ingress default-deny without permitting any traffic (Cilium deny-rules
+    # would instead override the component allow policies above).
+    - fromEndpoints:
+        - matchLabels:
+            basic-ai-platform/no-such-label: "never"
+  egress:
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+{{- end }}
+{{- end }}

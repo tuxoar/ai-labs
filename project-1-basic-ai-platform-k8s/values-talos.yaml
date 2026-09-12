@@ -33,6 +33,13 @@ monitoring:
 service:
   type: ClusterIP
 
+# Least-privilege CNPs. Rollout is two commits: allow-policies first
+# (defaultDeny: false), then — after a Hubble DROPPED watch through a full
+# chat + scrape cycle stays silent — flip defaultDeny to true.
+networkPolicy:
+  enabled: true
+  defaultDeny: false
+
 gateway:
   enabled: true
   className: cilium
