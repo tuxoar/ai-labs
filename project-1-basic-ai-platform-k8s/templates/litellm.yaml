@@ -9,6 +9,11 @@ data:
   # the model-server URL from env (os.environ/...), so the file is environment-agnostic.
   config.yaml: |
 {{ .Files.Get "files/litellm/config.yaml" | indent 4 }}
+  # Heuristic prompt-injection guardrail, referenced from config.yaml
+  # (guardrails -> prompt_guard.PromptInjectionGuard). Mounted at /app so the
+  # module resolves relative to the config dir.
+  prompt_guard.py: |
+{{ .Files.Get "files/litellm/prompt_guard.py" | indent 4 }}
 ---
 apiVersion: v1
 kind: Service
@@ -42,8 +47,8 @@ spec:
       labels:
         {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 8 }}
       annotations:
-        # Roll the pod when the config changes so edits take effect on sync.
-        checksum/config: {{ .Files.Get "files/litellm/config.yaml" | sha256sum }}
+        # Roll the pod when the config OR the guardrail hook changes.
+        checksum/config: {{ printf "%s%s" (.Files.Get "files/litellm/config.yaml") (.Files.Get "files/litellm/prompt_guard.py") | sha256sum }}
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -90,6 +95,10 @@ spec:
             - name: config
               mountPath: /app/config.yaml
               subPath: config.yaml
+              readOnly: true
+            - name: config
+              mountPath: /app/prompt_guard.py
+              subPath: prompt_guard.py
               readOnly: true
           livenessProbe:
             httpGet:

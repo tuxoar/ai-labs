@@ -1,0 +1,180 @@
+{{- if .Values.kyverno.enabled }}
+{{/*
+Namespaced Kyverno policies — policy ships WITH the app it protects. Namespaced
+`Policy` objects scope to this namespace automatically (no cluster-scope
+namespaceSelector games) and are rendered only when kyverno.enabled=true —
+flip it only AFTER the Kyverno Application (k8s-gitops applications/45-kyverno)
+is Healthy, or the ArgoCD sync fails on the missing CRD.
+
+Rollout: kyverno.validationFailureAction=Audit first; watch
+`kubectl get policyreport -n <ns>` until clean, then flip to Enforce.
+Enforce blocks POD CREATION, not ArgoCD sync — a future bad image bump shows
+as a Degraded ReplicaSet with a clear admission message (the desired failure
+mode).
+*/}}
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-image-digest
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/description: >-
+      Mutable tags (:latest, :main-stable) make deployments unrepeatable and
+      supply-chain audits meaningless. Every container image must be pinned by
+      digest; tags may remain for human readability (repo:tag@sha256:...).
+spec:
+  validationFailureAction: {{ .Values.kyverno.validationFailureAction }}
+  background: true
+  rules:
+    - name: require-digest
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Images must be pinned by digest (repo:tag@sha256:...)."
+        pattern:
+          spec:
+            containers:
+              - image: "*@sha256:*"
+            =(initContainers):
+              - image: "*@sha256:*"
+            =(ephemeralContainers):
+              - image: "*@sha256:*"
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: restrict-registries
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/description: >-
+      Only the registries/namespaces this platform actually uses. Image refs
+      are matched as written in the pod spec (Docker Hub shorthands included).
+spec:
+  validationFailureAction: {{ .Values.kyverno.validationFailureAction }}
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: >-
+          Image registry not in the platform allow-list (ghcr.io/berriai,
+          ghcr.io/open-webui, and the pinned Docker Hub repos).
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
+            =(initContainers):
+              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: require-resources
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/description: >-
+      Every container (init included) must declare cpu+memory requests and a
+      memory limit. CPU limits are DELIBERATELY not required: hard CPU
+      throttling hurts latency-sensitive inference gateways more than it
+      protects a single-tenant namespace (deviation from the roadmap's literal
+      wording, on purpose).
+spec:
+  validationFailureAction: {{ .Values.kyverno.validationFailureAction }}
+  background: true
+  rules:
+    - name: require-requests-and-memory-limit
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Containers must set cpu/memory requests and a memory limit."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+            =(initContainers):
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: disallow-privileged-and-root
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/description: >-
+      No privileged containers, no privilege escalation, and (except the
+      documented litellm exception — prisma writes to site-packages at
+      startup) everything runs non-root.
+spec:
+  validationFailureAction: {{ .Values.kyverno.validationFailureAction }}
+  background: true
+  rules:
+    - name: no-privileged-no-escalation
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Containers must set allowPrivilegeEscalation=false and must not be privileged."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  =(privileged): "false"
+                  allowPrivilegeEscalation: "false"
+            =(initContainers):
+              - securityContext:
+                  =(privileged): "false"
+                  allowPrivilegeEscalation: "false"
+    - name: require-run-as-nonroot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              kinds: [Pod]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: litellm
+          # open-webui: image rewrites root-owned static assets at startup
+          # (EACCES as non-root, verified 2026-09-12) — see threat model.
+          - resources:
+              kinds: [Pod]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: open-webui
+      validate:
+        message: >-
+          Pods must run as non-root (pod or container level). Exception:
+          litellm (documented in docs/threat-model.md).
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+{{- end }}

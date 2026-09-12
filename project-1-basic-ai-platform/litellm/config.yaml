@@ -131,9 +131,25 @@ litellm_settings:
   # which makes the scrape return 401.)
   require_auth_for_metrics_endpoint: false
 
+# Every model call passes this control point: a heuristic prompt-injection
+# guardrail (see prompt_guard.py, mounted next to this file). High-confidence
+# patterns block with HTTP 400; the rest are flagged into the audit log. The
+# Month-2 red-team harness measures its attack-success-rate before/after.
+guardrails:
+  - guardrail_name: prompt-injection-heuristic
+    litellm_params:
+      guardrail: prompt_guard.PromptInjectionGuard
+      mode: pre_call
+      default_on: true
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
   # Persist keys, spend, and request logs in Postgres — the audit/cost-control
   # foundation that Project 4 (governance) builds on.
   store_model_in_db: true
+  # Structured audit: prompts/responses recorded per request in
+  # LiteLLM_SpendLogs with key attribution; pruned after 90 days.
+  # Access path + retention rationale: docs/threat-model.md.
+  store_prompts_in_spend_logs: true
+  maximum_spend_logs_retention_period: "90d"

@@ -40,6 +40,13 @@ networkPolicy:
   enabled: true
   defaultDeny: true   # enabled after a clean Hubble DROPPED watch (2026-09-12)
 
+# Flip enabled to true ONLY after the k8s-gitops "kyverno" Application is
+# Healthy (missing CRDs fail the sync). Then: Audit -> clean policyreports
+# (~24h) -> validationFailureAction: Enforce.
+kyverno:
+  enabled: false
+  validationFailureAction: Audit
+
 gateway:
   enabled: true
   className: cilium

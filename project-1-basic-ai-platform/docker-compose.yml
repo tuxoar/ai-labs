@@ -57,6 +57,7 @@ services:
       LOCAL_AI_API_KEY: ${LOCAL_AI_API_KEY:-none}
     volumes:
       - ./litellm/config.yaml:/app/config.yaml:ro
+      - ./litellm/hooks/prompt_guard.py:/app/prompt_guard.py:ro
     ports:
       - "4000:4000"
     networks: [aiplat]

@@ -255,6 +255,14 @@ networkPolicy:
   enabled: false      # requires Cilium (CNP CRDs)
   defaultDeny: false
 
+# --- Kyverno policies (require-digests, restrict-registries, resources, non-root)
+# Namespaced Policy objects, rendered only when Kyverno's CRDs exist on the
+# cluster (k8s-gitops applications/45-kyverno). Rollout: Audit -> clean
+# policyreports -> Enforce.
+kyverno:
+  enabled: false
+  validationFailureAction: Audit
+
 # --- External access ---------------------------------------------------------
 # service.type governs the "flat" exposure for laptop clusters (NodePort) vs
 # internal-only (ClusterIP). Gateway API (Cilium) is the Talos path.
