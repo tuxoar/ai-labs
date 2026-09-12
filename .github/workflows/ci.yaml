@@ -1,0 +1,120 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helm-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin kubeconform
+      - name: Validate chart (lint + template + kubeconform + config parity)
+        run: ./project-1-basic-ai-platform-k8s/scripts/ci-validate.sh
+
+  compose-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate throwaway .env and validate compose file
+        working-directory: project-1-basic-ai-platform
+        run: |
+          ./scripts/gen-env.sh
+          docker compose config -q
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck all scripts
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q shellcheck
+          shellcheck --severity=warning \
+                     project-1-basic-ai-platform/scripts/*.sh \
+                     project-1-basic-ai-platform-k8s/scripts/*.sh
+
+  trivy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan (compose + rendered manifests)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore
+
+  # SBOM + CRITICAL-vuln gate for every pinned image. The image list is parsed
+  # from values.yaml so the pins stay the single source of truth.
+  trivy-images-sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install trivy
+        run: |
+          curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin
+      - name: SBOMs (CycloneDX) + CRITICAL gate
+        run: |
+          mkdir -p sboms
+          images=$(python3 -c "
+          import yaml
+          v = yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))
+          imgs = [v[c]['image'] for c in ('postgres','redis','litellm','openWebui','prometheus','grafana')]
+          imgs.append(v['init']['image'])
+          print('\n'.join(imgs))")
+          rc=0
+          while IFS= read -r img; do
+            name=$(echo "$img" | sed 's|.*/||; s|[:@].*||')
+            echo "=== $img"
+            trivy image --format cyclonedx --output "sboms/${name}.cdx.json" "$img"
+            trivy image --severity CRITICAL --exit-code 1 --ignorefile .trivyignore "$img" || rc=1
+          done <<< "$images"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sboms
+          path: sboms/
+
+  # Only LiteLLM publishes cosign signatures upstream (verified: the .sig tag
+  # exists for the pinned digest; none of the other six images sign). Keyless
+  # GitHub-Actions identity. Non-blocking until the exact certificate identity
+  # is confirmed from a first run's output, then pin the regexp and drop
+  # continue-on-error.
+  cosign-verify:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Verify LiteLLM image signature
+        run: |
+          img=$(python3 -c "
+          import yaml
+          print(yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))['litellm']['image'])")
+          cosign verify "$img" \
+            --certificate-identity-regexp '^https://github.com/BerriAI/litellm/' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+  # Placeholder: the smoke tests need the Talos cluster + GPU box, so they stay
+  # out of hosted CI. This is also the hook point for the Month-2 red-team
+  # harness (prompt-injection regression suite: attack corpus vs the gateway,
+  # reporting attack success rate per model/guardrail config).
+  smoke-test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "run scripts/smoke-test.sh against a reachable cluster"

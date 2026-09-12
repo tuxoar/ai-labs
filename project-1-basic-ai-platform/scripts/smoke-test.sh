@@ -7,7 +7,7 @@
 #
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 # --- load .env ---
 if [ ! -f .env ]; then echo "FAIL: .env not found (cp .env.example .env)"; exit 1; fi

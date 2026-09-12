@@ -1,0 +1,3 @@
+# Accepted CVEs — the visible risk register for image scanning.
+# Every entry needs: CVE id, image, reason, review-by date.
+# (empty — populated as the CI gate surfaces findings)
