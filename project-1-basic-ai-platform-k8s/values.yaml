@@ -156,14 +156,12 @@ openWebui:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
-  # Non-root attempt: start.sh needs no root; caches/HOME are pointed at the
-  # data PVC (HOME env in the template), fsGroup makes prior root-owned PVC
-  # files group-accessible. If it crashloops, fall back to root-with-baseline
-  # (remove runAsNonRoot/runAsUser) and record the exception in the threat model.
+  # ACCEPTED EXCEPTION (threat model): runs as root — the image's startup
+  # rewrites root-owned files under /app/backend/open_webui/static/ (favicon/
+  # logo/css), so an arbitrary uid fails with EACCES (verified 2026-09-12).
+  # Baseline hardening still applies: no privilege escalation, all
+  # capabilities dropped, seccomp. Revisit if upstream ships a non-root image.
   podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
     fsGroup: 1000
     seccompProfile: { type: RuntimeDefault }
   containerSecurityContext:
