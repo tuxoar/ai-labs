@@ -38,7 +38,7 @@ service:
 # chat + scrape cycle stays silent — flip defaultDeny to true.
 networkPolicy:
   enabled: true
-  defaultDeny: false
+  defaultDeny: true   # enabled after a clean Hubble DROPPED watch (2026-09-12)
 
 gateway:
   enabled: true
