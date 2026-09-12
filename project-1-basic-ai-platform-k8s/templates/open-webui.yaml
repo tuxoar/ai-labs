@@ -92,6 +92,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/backend/data
+          # Cold start can exceed the liveness window (model/cache init), which
+          # crashloops the pod: the startupProbe gives it up to 10 minutes and
+          # suspends liveness until /health first answers.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /health
