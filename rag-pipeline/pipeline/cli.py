@@ -14,7 +14,7 @@ import yaml
 from .chunk import chunk_book
 from .config import EMBEDDERS, Settings
 from .embed import embed_texts
-from .load import collection_stats, load_chunks
+from .load import collection_stats, existing_hashes, load_chunks
 from .parse import parse_epub
 from .webui import ensure_connection, ensure_knowledge
 
@@ -71,11 +71,20 @@ def ingest(
                 contextual_headers=job.get("contextual_headers", contextual_headers),
             )
             typer.echo(f"[{col}] {book.title!r}: {len(book.chapters)} chapters -> {len(chunks)} chunks")
-            embeddings = {
-                m: embed_texts(settings, m, [c.text for c in chunks]) for m in models
-            }
-            stats = load_chunks(settings, book, col, chunks, embeddings)
-            typer.echo(f"[{col}]   inserted={stats['inserted']} skipped={stats['skipped']} embedded={stats['embedded']}")
+            # Skip chunks already ingested+embedded BEFORE spending gateway
+            # budget — makes re-runs after a mid-corpus failure cheap.
+            for m in models:
+                done = existing_hashes(settings, col, EMBEDDERS[m][0])
+                todo = [c for c in chunks if c.content_hash not in done]
+                if not todo:
+                    typer.echo(f"[{col}]   {m}: all {len(chunks)} chunks already embedded — skip")
+                    continue
+                embeddings = {m: embed_texts(settings, m, [c.text for c in todo])}
+                stats = load_chunks(settings, book, col, todo, embeddings)
+                typer.echo(
+                    f"[{col}]   {m}: new={len(todo)} inserted={stats['inserted']} "
+                    f"skipped={stats['skipped']} embedded={stats['embedded'][m]}"
+                )
 
 
 @app.command()

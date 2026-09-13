@@ -11,6 +11,17 @@ from .config import EMBEDDERS, Settings
 from .parse import Book
 
 
+def existing_hashes(settings: Settings, collection: str, column: str) -> set[str]:
+    """Hashes already ingested AND embedded (for the given model column) —
+    the caller skips these before spending gateway budget on embeddings."""
+    with psycopg.connect(settings.pg_dsn) as conn:
+        rows = conn.execute(
+            f"SELECT content_hash FROM rag.chunks WHERE collection_name = %s AND {column} IS NOT NULL",
+            (collection,),
+        ).fetchall()
+    return {r[0] for r in rows}
+
+
 def upsert_book(conn: psycopg.Connection, book: Book) -> str:
     row = conn.execute(
         """

@@ -107,7 +107,15 @@ class PromptInjectionGuard(CustomGuardrail):
             return data
 
         score = sum(w for _, w in matched)
-        blocked = score >= BLOCK_THRESHOLD
+        # Enforcement point: COMPLETIONS. Embedding/rerank calls are flagged
+        # (audit line + SpendLogs verdict) but never blocked: embedded text is
+        # data, not instructions — legitimate corpora (security books, code)
+        # trip the heuristics constantly, and the injection risk only
+        # materializes when retrieved content reaches a completion call, which
+        # this hook still gates. Found live: ingesting "Black Hat Bash"
+        # (2026-09-13).
+        enforce = str(call_type) not in ("embeddings", "rerank")
+        blocked = enforce and score >= BLOCK_THRESHOLD
         verdict = {
             "event": "prompt_injection_suspect",
             "key_alias": getattr(user_api_key_dict, "key_alias", None),
