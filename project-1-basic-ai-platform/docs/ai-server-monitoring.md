@@ -215,6 +215,27 @@ CiliumNetworkPolicy in the k8s chart lets ONLY the litellm pods egress to
 If `ufw` is inactive and the box is on a trusted LAN, you can skip this — but see
 Security notes below.
 
+**Applied state (2026-09-13).** Source-IP note: Cilium masquerades pod egress
+to the NODE IPs, so senai sees the Talos nodes (10.6.7.60–.66, covered by two
+/30s that also fit a future 8th node), never pod IPs. `10.6.6.70` is the admin
+workstation (DHCP — reserve it in the router, or widen to the /24 and note the
+trade-off in the threat model). Default deny incoming; SSH allowed LAN-wide.
+
+```text
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    10.6.6.0/24
+[ 2] 11434/tcp                  ALLOW IN    10.6.7.60/30
+[ 3] 11434/tcp                  ALLOW IN    10.6.7.64/30
+[ 4] 11434/tcp                  ALLOW IN    10.6.6.70
+[ 5] 9100,9400/tcp              ALLOW IN    10.6.7.60/30
+[ 6] 9100,9400/tcp              ALLOW IN    10.6.7.64/30
+[ 7] 9100,9400/tcp              ALLOW IN    10.6.6.70
+```
+
+Ops note: adding cluster nodes outside 10.6.7.60–.67 breaks the Ollama
+pinhole — symptom is litellm chat failures; check `sudo ufw status` first.
+
 ---
 
 ## Part 6 — Wire into Prometheus (platform side)
