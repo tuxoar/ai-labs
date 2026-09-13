@@ -13,8 +13,8 @@ jobs:
   helm-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
       - name: Install kubeconform
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
@@ -25,7 +25,7 @@ jobs:
   compose-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Generate throwaway .env and validate compose file
         working-directory: project-1-basic-ai-platform
         run: |
@@ -35,7 +35,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck all scripts
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q shellcheck
@@ -46,9 +46,9 @@ jobs:
   trivy-config:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Trivy config scan (compose + rendered manifests)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -61,7 +61,7 @@ jobs:
   trivy-images-sbom:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install trivy
         run: |
           curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
@@ -83,7 +83,7 @@ jobs:
             trivy image --severity CRITICAL --exit-code 1 --ignorefile .trivyignore "$img" || rc=1
           done <<< "$images"
           exit $rc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: sboms
@@ -98,8 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: sigstore/cosign-installer@v3
+      - uses: actions/checkout@v7
+      - uses: sigstore/cosign-installer@v4
       - name: Verify LiteLLM image signature
         run: |
           img=$(python3 -c "
