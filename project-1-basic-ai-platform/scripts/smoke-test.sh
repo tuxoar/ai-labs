@@ -42,7 +42,8 @@ embed_models=$(echo "$models" | python3 -c "import sys,json;print(' '.join(m['id
 # big/offloaded models (qwen3, anything Tier-3) are legitimately slow.
 hr "chat completion — all chat models"
 for m in $chat_models; do
-  chat=$(curl -s --max-time 180 -H "$AUTH" -H "Content-Type: application/json" \
+  case "$m" in qwen3|qwen3-next|qwen3.5) mt=600 ;; *) mt=180 ;; esac
+  chat=$(curl -s --max-time "$mt" -H "$AUTH" -H "Content-Type: application/json" \
     "$LITELLM/v1/chat/completions" \
     -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: pong\"}],\"max_tokens\":64,\"temperature\":0}")
   reply=$(echo "$chat" | python3 -c "import sys,json;m=json.load(sys.stdin)['choices'][0]['message'];print((m.get('content') or m.get('reasoning_content') or '').strip())" 2>/dev/null)

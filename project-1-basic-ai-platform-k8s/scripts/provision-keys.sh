@@ -79,7 +79,7 @@ generate_key() { # <alias> <json-body> -> prints new key
 # models) so least-privilege is demonstrably non-trivial.
 OPENWEBUI_BODY='{
   "key_alias": "openwebui",
-  "models": ["llama3","llama3.1","gemma2","phi4","qwen2.5","coder","deepseek-coder","qwen3","embed-nomic"],
+  "models": ["llama3","llama3.1","gemma2","phi4","qwen2.5","coder","deepseek-coder","qwen3","qwen3-8b","qwen3-next","qwen3.5","embed-nomic"],
   "max_budget": 50.0,
   "budget_duration": "30d",
   "tpm_limit": 100000,

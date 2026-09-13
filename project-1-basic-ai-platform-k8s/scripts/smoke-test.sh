@@ -81,9 +81,12 @@ chat_models=$(echo "$models" | python3 -c "import sys,json;print(' '.join(m['id'
 embed_models=$(echo "$models" | python3 -c "import sys,json;print(' '.join(m['id'] for m in json.load(sys.stdin).get('data',[]) if m['id'].startswith('embed')))" 2>/dev/null)
 
 # 2. Chat completion against EVERY chat model (proves LiteLLM -> model server per model).
+# Tier-3 models (qwen3*, 24-81GB RAM offload) can take minutes on a COLD first
+# load, so they get a longer budget than the VRAM-resident tier.
 hr "chat completion — all chat models"
 for m in $chat_models; do
-  chat=$(curl -s --max-time 180 -H "$AUTH" -H "Content-Type: application/json" \
+  case "$m" in qwen3|qwen3-next|qwen3.5) mt=600 ;; *) mt=180 ;; esac
+  chat=$(curl -s --max-time "$mt" -H "$AUTH" -H "Content-Type: application/json" \
     "$LITELLM/v1/chat/completions" \
     -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly: pong\"}],\"max_tokens\":64,\"temperature\":0}")
   reply=$(echo "$chat" | python3 -c "import sys,json;m=json.load(sys.stdin)['choices'][0]['message'];print((m.get('content') or m.get('reasoning_content') or '').strip())" 2>/dev/null)
