@@ -104,7 +104,6 @@ jobs:
           import yaml
           print(yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))['litellm']['image'])")
           cosign verify --key project-1-basic-ai-platform-k8s/keys/berriai-cosign.pub "$img"
-            "$img"
 
   # Placeholder: the smoke tests need the Talos cluster + GPU box, so they stay
   # out of hosted CI. This is also the hook point for the Month-2 red-team
