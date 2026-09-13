@@ -10,11 +10,14 @@
 # or 2026-12-01, whichever first.
 CVE-2025-68121
 
-# ghcr.io/open-webui/open-webui (pinned main digest) — GitPython RCE via
-# crafted remote repo, fixed in 3.1.59. Compensating controls: the namespace
-# is egress-locked (CNP: litellm/postgres/DNS only), so the pod cannot clone
-# remote repositories at all, and OFFLINE_MODE disables the online import
-# paths. The current upstream :main build fixes GitPython but adds 4 new
-# fixable CRITICALs (nltk RCE x3, unstructured SSRF) — bumping is a net
-# regression today. Review: 2026-10-01 against upstream releases.
-CVE-2026-78676
+# ghcr.io/open-webui/open-webui (pinned main digest) — nltk (<3.10.x, RCE /
+# argument-injection x3) and unstructured (<0.24.0, SSRF in URL-based
+# ingestion), both pulled in for RAG/document ingestion. No open-webui build
+# ships the fixed versions yet (present in the latest :main digest too).
+# Compensating controls: the namespace is egress-locked (CNP: litellm/
+# postgres/DNS only) so URL-based SSRF has nowhere to go, and OFFLINE_MODE
+# disables the online ingestion paths. Review: 2026-10-15 against upstream.
+CVE-2026-78683
+CVE-2026-79657
+CVE-2026-79675
+CVE-2026-71428

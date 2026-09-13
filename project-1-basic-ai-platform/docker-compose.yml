@@ -63,7 +63,7 @@ services:
     networks: [aiplat]
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main@sha256:6a773e5c3a246b65cbe74ce942b294292c0e5f81c138f703d111bc162f7d7c3d
+    image: ghcr.io/open-webui/open-webui:main@sha256:1a6399d237dc392a2313e0ca826020b3fd5d22536357840eb63393d18dc8b924
     restart: unless-stopped
     depends_on:
       - litellm
