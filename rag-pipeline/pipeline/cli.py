@@ -16,7 +16,7 @@ from .config import EMBEDDERS, Settings
 from .embed import embed_texts
 from .load import collection_stats, existing_hashes, load_chunks
 from .parse import parse_epub
-from .webui import ensure_connection, ensure_knowledge
+from .webui import ensure_connection, ensure_embedding_config, ensure_knowledge
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -103,6 +103,9 @@ def webui_setup(
     embedder: str = typer.Option("embed-nomic"),
 ):
     settings = Settings()
+    if settings.gateway_key:
+        ensure_embedding_config(settings, settings.gateway_key, model=embedder)
+        typer.echo(f"embedding config: engine=openai model={embedder} (persisted)")
     conn_id = ensure_connection(settings, read_dsn)
     typer.echo(f"external connection: {conn_id}")
     for col in collection:

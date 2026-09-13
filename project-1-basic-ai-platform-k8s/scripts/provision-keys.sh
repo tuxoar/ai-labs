@@ -102,8 +102,8 @@ OPENWEBUI_RAG_BODY='{
   "models": ["embed-nomic","embed-bge-m3"],
   "max_budget": 10.0,
   "budget_duration": "30d",
-  "tpm_limit": 500000,
-  "rpm_limit": 120,
+  "tpm_limit": 2000000,
+  "rpm_limit": 600,
   "metadata": {"service": "rag-pipeline", "provisioned_by": "provision-keys.sh"}
 }'
 

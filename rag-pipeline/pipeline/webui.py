@@ -32,6 +32,25 @@ def _client(settings: Settings) -> httpx.Client:
     )
 
 
+def ensure_embedding_config(settings: Settings, rag_key: str, model: str = "embed-nomic", batch: int = 16) -> None:
+    """Open WebUI PERSISTS RAG settings in its DB after first boot — env vars
+    only seed the initial value, so the chart env alone doesn't flip an
+    existing install (found live: a 68-day-old instance kept its 384-dim
+    all-MiniLM default and broke dimension-matched retrieval). This pushes the
+    persisted config via the admin API; idempotent."""
+    with _client(settings) as c:
+        resp = c.post(
+            "/retrieval/embedding/update",
+            json={
+                "RAG_EMBEDDING_ENGINE": "openai",
+                "RAG_EMBEDDING_MODEL": model,
+                "RAG_EMBEDDING_BATCH_SIZE": batch,
+                "openai_config": {"url": "http://litellm:4000/v1", "key": rag_key},
+            },
+        )
+        resp.raise_for_status()
+
+
 def ensure_connection(settings: Settings, read_dsn: str) -> str:
     """Create (or reuse by name) the pgvector external connection; returns id."""
     with _client(settings) as c:
