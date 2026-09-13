@@ -76,6 +76,14 @@ model_list:
       output_cost_per_token: 0.000002
       additional_drop_params: ["tools", "tool_choice"]   # no tool support in Ollama
 
+  - model_name: qwen3-8b               # 8B, fast VRAM-resident sibling of qwen3
+    litellm_params:
+      model: openai/qwen3:8b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000002
+
   # --- Tier 2/3: larger, partial RAM offload (reasoning / quality batch) ---
   - model_name: qwen3                  # 36B MoE
     litellm_params:
@@ -85,11 +93,33 @@ model_list:
       input_cost_per_token: 0.000003
       output_cost_per_token: 0.000006
 
-  # kimi-k2 (1T) is proxied to ollama.com's cloud and returns 401 unless the
-  # Ollama daemon on senai is signed in (`ollama signin`). Disabled until then.
+  - model_name: qwen3-next             # 80B MoE, ~50GB — heavy RAM offload
+    litellm_params:
+      model: openai/qwen3-next:80b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000003
+      output_cost_per_token: 0.000006
+
+  - model_name: qwen3.5                # 122B MoE, ~81GB — heaviest offload, slow
+    litellm_params:
+      model: openai/qwen3.5:122b
+      api_base: os.environ/LOCAL_AI_BASE_URL
+      api_key: os.environ/LOCAL_AI_API_KEY
+      input_cost_per_token: 0.000003
+      output_cost_per_token: 0.000006
+
+  # Cloud-proxied models (ollama.com): the daemon on senai is signed in, but
+  # these return "requires a subscription or usage credits" (checked
+  # 2026-09-13). Disabled until there's a paid plan.
   # - model_name: kimi-k2
   #   litellm_params:
   #     model: openai/kimi-k2.6:cloud
+  #     api_base: os.environ/LOCAL_AI_BASE_URL
+  #     api_key: os.environ/LOCAL_AI_API_KEY
+  # - model_name: glm-flash
+  #   litellm_params:
+  #     model: openai/glm-5.3-flash:cloud
   #     api_base: os.environ/LOCAL_AI_BASE_URL
   #     api_key: os.environ/LOCAL_AI_API_KEY
 
