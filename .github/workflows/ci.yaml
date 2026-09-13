@@ -80,7 +80,7 @@ jobs:
             name=$(echo "$img" | sed 's|.*/||; s|[:@].*||')
             echo "=== $img"
             trivy image --format cyclonedx --output "sboms/${name}.cdx.json" "$img"
-            trivy image --severity CRITICAL --exit-code 1 --ignorefile .trivyignore "$img" || rc=1
+            trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 --ignorefile .trivyignore "$img" || rc=1
           done <<< "$images"
           exit $rc
       - uses: actions/upload-artifact@v7

@@ -1,3 +1,5 @@
 # Accepted CVEs — the visible risk register for image scanning.
 # Every entry needs: CVE id, image, reason, review-by date.
-# (empty — populated as the CI gate surfaces findings)
+# Gate policy: CRITICAL + --ignore-unfixed (unfixable OS-package CVEs are
+# visible in the SBOM artifacts but do not fail CI — nothing actionable).
+# (empty — populated as the CI gate surfaces fixable findings)
