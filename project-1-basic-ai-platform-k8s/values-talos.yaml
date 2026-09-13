@@ -45,7 +45,8 @@ networkPolicy:
 # (~24h) -> validationFailureAction: Enforce.
 kyverno:
   enabled: true    # 45-kyverno Healthy on cluster (2026-09-13)
-  validationFailureAction: Audit
+  # Audit soak showed 0 FAIL across all workloads before the flip.
+  validationFailureAction: Enforce
 
 gateway:
   enabled: true
