@@ -49,7 +49,7 @@ model-weight protection. This revision:
 
 At the end of 90 days, the portfolio should contain:
 
-1. **Basic AI Platform on Kubernetes** — ✅ built (Compose + Helm/Talos); hardening pass remains
+1. **Basic AI Platform on Kubernetes** — ✅ built **and hardened** (Compose + Helm/Talos; Week-1 hardening pass completed 2026-09-12, threat model published)
 2. **Secure Agent Platform** — MCP servers, sandboxed execution, agent identity *(the differentiator)*
 3. **AI Red Team & Eval Harness** — automated injection/jailbreak testing wired into CI
 4. **AI Security Operations Platform** — investigation agents built on the secure foundation
@@ -91,55 +91,86 @@ Both variants are done and deployed:
 * `project-1-basic-ai-platform-k8s` — umbrella Helm chart on Talos via ArgoCD:
   Vault/VSO secrets, ServiceMonitors into kube-prometheus-stack, Cilium Gateway
 
-## Changes to apply to Project 1 (hardening pass, ~1 week)
+## Changes to apply to Project 1 — ✅ COMPLETED 2026-09-12 (hardening pass)
 
-These upgrades convert the platform from "deployed" to "defensible," and each one
-is a portfolio talking point. Roughly in priority order:
+Executed end-to-end in one day (planned ~1 week): staged GitOps rollout, every
+stage verified live before the next. Scope decision: **k8s-first** — the Talos
+deployment got the full pass; the Compose variant got digest pins, the shared
+gateway config (guardrail + audit ride along), and docs, and deliberately stays
+on the master key (recorded as accepted divergence A5 in the threat model).
 
-### Governance (finish the existing roadmap items)
+### Governance ✅
 
-* **Per-user LiteLLM virtual keys + budgets** — stop using the master key from
-  Open WebUI; issue scoped keys with spend limits and TPM/RPM rate limits. This is
-  the foundation for every later cost/abuse control.
-* **Model allow-lists per key** — demonstrate least-privilege at the gateway.
+* Scoped virtual keys minted by an idempotent `scripts/provision-keys.sh`
+  (master key retired from Open WebUI): `openwebui` — 12-model allow-list,
+  $50/30d budget, 100k TPM / 60 RPM; `smoke-test` — $5/7d. Nominal per-token
+  prices on every model make budgets/spend real with free local models.
+* Least-privilege demonstrated: the WebUI key cannot reach the benchmark
+  embedders (403) or key-management routes (401) — asserted in the smoke test.
 
-### Network security (plays directly to Cilium/Talos strengths)
+### Network security ✅
 
-* **Kubernetes NetworkPolicies** for the `basic-ai-platform` namespace:
-  default-deny; Postgres/Redis reachable only from LiteLLM and Open WebUI;
-  **egress allowed only to `ai-server:11434`** and DNS. The egress rule matters
-  most — it is the first concrete instance of the egress-control theme in the
-  Month 3 weight-security track.
-* Firewall/documented exposure for the unauthenticated exporters on `ai-server`
-  (`:9100`, `:9400`) if not already done.
+* **CiliumNetworkPolicies**, default-deny, rolled out allow-first with a Hubble
+  DROPPED watch before the catch-all. The headline egress pinhole: **only
+  litellm pods may reach `ai-server:11434`**. Negative probes live in the smoke
+  test (gateway bypass, lateral movement, general egress — all denied).
+* Field lesson: the egress lock hung Open WebUI's startup phone-home (Hubble
+  showed the drops) — fixed with `OFFLINE_MODE=true`, the right posture for a
+  locked-down namespace.
+* ufw active on senai: 11434/9100/9400 allow-listed to the Talos node /30s
+  (Cilium masquerades pod egress to node IPs) + workstation; applied ruleset
+  recorded in the monitoring doc.
 
-### Policy & supply chain
+### Policy & supply chain ✅
 
-* **Kyverno policies** on the namespace: require image digests (not tags),
-  disallow privileged/root, require resource limits, restrict registries.
-* **Sign and verify**: pin the six images by digest; verify signatures where
-  upstream signs (or re-sign into your own registry with Cosign) and enforce
-  with Kyverno `verifyImages`. Generate SBOMs with Trivy in CI.
+* **Kyverno 3.9.1** installed via a new ArgoCD app in k8s-gitops; four
+  namespaced Policies ship WITH the chart: require-digests,
+  restrict-registries, require-resources (deliberately no CPU limits —
+  annotated), disallow-root (litellm + open-webui documented exceptions).
+  Audit → clean policyreports → **Enforce**, verified by denied admission.
+* All images pinned `tag@digest`. Signing reality: only LiteLLM signs
+  (key-based, not keyless) — its public key is vendored in-repo and
+  **cosign verify is a blocking CI job**; the rest rely on pins + registry
+  allow-list + Trivy. `.trivyignore` is the reasoned accepted-CVE register
+  (gate = CRITICAL + `--ignore-unfixed`); one real fix shipped via a pin bump
+  (open-webui GitPython RCE).
+* PSA labels via `managedNamespaceMetadata`: enforce baseline, warn/audit
+  restricted. Non-root everywhere images allow (postgres/redis 999,
+  prometheus 65534, grafana 472); `automountServiceAccountToken: false` on
+  every pod.
 
-### Gateway as security control point
+### Gateway as security control point ✅
 
-* **LiteLLM guardrail hooks**: enable prompt-injection detection / content
-  filtering callbacks on the gateway so every model call passes a control point.
-  Even a simple heuristic + logging hook demonstrates the architecture.
-* **Structured audit logging** of prompts/responses/user/model to Postgres
-  (already partially there via LiteLLM logs) — document retention and access.
+* `prompt_guard.py` heuristic `CustomGuardrail` (pre-call, default-on): blocks
+  high-confidence injections (400), flags the rest; structured JSON audit line
+  with key attribution; verdict lands in SpendLogs. Guardrail events flow
+  through promtail → Loki (no prompt text in the log line — prompts stay in
+  the Postgres boundary).
+* Full request/response audit in `LiteLLM_SpendLogs`
+  (`store_prompts_in_spend_logs`, 90d retention), verified before/after.
 
-### Testing
+### Testing ✅
 
-* Extend `smoke-test.sh` into a **CI job** (GitHub Actions) that runs `helm template`
-  + `kubeconform`, Trivy scans, and — once the Month 2 eval harness exists — a
-  prompt-injection regression suite against the gateway.
+* GitHub Actions CI: helm lint/template + kubeconform (CRD catalog), compose
+  validation, shellcheck, Trivy config + per-image CRITICAL gates with
+  CycloneDX SBOM artifacts, blocking cosign verify, and a config-parity check
+  keeping the two litellm configs byte-identical. Local mirror:
+  `scripts/ci-validate.sh`. Smoke test grew governance negatives, CNP egress
+  probes, and tier-3 model timeouts; Month-2 injection-regression hook point
+  stubbed.
 
-### Documentation
+### Documentation ✅
 
-* Add a **threat model** (`docs/threat-model.md`) using the OWASP LLM Top 10 2025
-  categories: trust boundaries, the "Ollama has no auth" gateway rationale,
-  what's mitigated vs. accepted. This becomes the template for every later project.
+* `docs/threat-model.md` published: trust boundaries TB1–TB4, OWASP LLM Top 10
+  2025 control table, the "Ollama has no auth" rationale (now enforced from
+  both sides: CNP pinhole in-cluster, ufw on the LAN), and the
+  accepted-risk register (A1 litellm root, A1b open-webui root+offline,
+  A5 compose divergence, …). The template for every later project.
+
+**Deferred/follow-ups:** re-sign images into own registry (stretch), migrate
+litellm/open-webui to non-root images then PSA enforce→restricted, Kyverno
+CEL policy migration, kube-prom Grafana PVC corruption (storage incident that
+also forced a Vault rebuild — runbook now in k8s-gitops/docs/vault-setup.md).
 
 ---
 
@@ -175,9 +206,11 @@ and look for contribution opportunities (see Visibility).
 
 # Harden the Foundation + RAG Fundamentals
 
-## Week 1 — Project 1 hardening pass
+## Week 1 — Project 1 hardening pass ✅ DONE (2026-09-12)
 
-Execute the "Changes to apply to Project 1" list above.
+Executed the "Changes to apply to Project 1" list above — see the completion
+notes there. Final state: 24/24 smoke checks, Kyverno Enforce with clean
+policyreports, CI green, threat model published.
 
 ## Weeks 2–3 — Compressed RAG exercise (formerly the Month 2 project)
 
@@ -200,7 +233,8 @@ threat model and design notes for Month 2 using their vocabulary.
 
 Deliverables:
 
-* Hardened `project-1` (both variants) + threat model
+* ✅ Hardened `project-1` (k8s fully; Compose scoped per the k8s-first
+  decision) + published threat model
 * `rag-exercise/` with eval results in the README
 * Design doc for the Secure Agent Platform
 
