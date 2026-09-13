@@ -95,6 +95,26 @@ spec:
             - name: ENABLE_OLLAMA_API
               value: "false"
             {{- include "bap.postgresEnv" (dict "ctx" . "database" "openwebui") | nindent 12 }}
+            {{- if .Values.openWebui.rag.enabled }}
+            # RAG query embeddings via the gateway with the embed-ONLY scoped
+            # key (openwebui-rag) — the chat key stays denied the benchmark
+            # embedders, and this key cannot chat. Retrieval itself hits the
+            # rag-pipeline's pgvector views via an external knowledge
+            # connection (read-only DB role) configured through the admin API.
+            - name: RAG_EMBEDDING_ENGINE
+              value: "openai"       # NEVER '' — local model downloads are egress-blocked
+            - name: RAG_EMBEDDING_MODEL
+              value: {{ .Values.openWebui.rag.embeddingModel | quote }}
+            - name: RAG_EMBEDDING_BATCH_SIZE
+              value: {{ .Values.openWebui.rag.embeddingBatchSize | quote }}
+            - name: RAG_OPENAI_API_BASE_URL
+              value: "http://litellm:{{ .Values.litellm.port }}/v1"
+            - name: RAG_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: openwebuiRagApiKey
+            {{- end }}
           ports:
             - containerPort: 8080
           volumeMounts:

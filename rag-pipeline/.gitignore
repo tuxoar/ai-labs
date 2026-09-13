@@ -1,0 +1,16 @@
+# The corpus is the user's own (copyrighted) ebook library — NEVER commit any
+# of it to this PUBLIC repo: not the EPUBs, not derived markdown/text, not the
+# per-book manifest (titles stay private too; commit manifest.example.yaml only).
+corpus/*.epub
+corpus/manifest.yaml
+build/
+*.md.d/
+
+# Local state & secrets
+.env
+.venv/
+__pycache__/
+*.egg-info/
+ingest-state.json
+results/raw/
+*.out.env

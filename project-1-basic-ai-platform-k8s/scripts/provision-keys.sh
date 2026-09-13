@@ -93,6 +93,19 @@ SMOKETEST_BODY='{
   "rpm_limit": 30,
   "metadata": {"service": "smoke-test", "provisioned_by": "provision-keys.sh"}
 }'
+# Embed-ONLY key for the rag-pipeline (bulk ingestion) and Open WebUI's RAG
+# query embedding. Deliberately cannot chat; the chat key deliberately cannot
+# reach the benchmark embedders — least privilege in both directions.
+# TPM sized for bulk ingestion of a large ebook library.
+OPENWEBUI_RAG_BODY='{
+  "key_alias": "openwebui-rag",
+  "models": ["embed-nomic","embed-bge-m3"],
+  "max_budget": 10.0,
+  "budget_duration": "30d",
+  "tpm_limit": 500000,
+  "rpm_limit": 120,
+  "metadata": {"service": "rag-pipeline", "provisioned_by": "provision-keys.sh"}
+}'
 
 declare -A NEW_KEYS=()
 
@@ -116,6 +129,7 @@ echo "provisioning virtual keys (ns=$NS, gateway=$LITELLM)..."
 rc=0
 provision openwebui  openwebuiApiKey "$OPENWEBUI_BODY"  || rc=1
 provision smoke-test smokeTestApiKey "$SMOKETEST_BODY" || rc=1
+provision openwebui-rag openwebuiRagApiKey "$OPENWEBUI_RAG_BODY" || rc=1
 
 # --- persist new keys to Vault (durable home; VSO syncs the Secret) ---
 if [ "${#NEW_KEYS[@]}" -gt 0 ]; then

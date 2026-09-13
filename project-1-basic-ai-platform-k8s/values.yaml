@@ -55,6 +55,11 @@ secrets:
     # mode) or written to Vault (vault mode). Optional: rendered only if set.
     openwebuiApiKey: ""
     smokeTestApiKey: ""
+    # rag-pipeline: embed-only gateway key + the two Postgres role passwords
+    # (rag_ingest / rag_read, created by rag-pipeline/migrations/apply-migrations.sh).
+    openwebuiRagApiKey: ""
+    ragIngestPassword: ""
+    ragReadPassword: ""
   vault:
     enabled: false
     # KV-v2 mount + path holding the 5 keys above (same key names, camelCase).
@@ -168,6 +173,14 @@ openWebui:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false   # python writes tmp/cache paths outside the PVC
     capabilities: { drop: ["ALL"] }
+  # RAG (Track A: external pgvector knowledge — see rag-pipeline/PLAN.md).
+  # Only the query-embedding path is configured here; Open WebUI's INTERNAL
+  # vector store / hybrid / chunking stay unused (our pipeline owns the data).
+  # Requires the openwebuiRagApiKey secret key (provision-keys.sh).
+  rag:
+    enabled: false                  # values-talos: true
+    embeddingModel: embed-nomic     # must match the collection's embedder
+    embeddingBatchSize: "16"
 
 # --- Observability -----------------------------------------------------------
 # Two modes:

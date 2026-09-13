@@ -9,6 +9,10 @@ redis:
   storage: { storageClassName: openebs-replicated, size: 2Gi }
 openWebui:
   storage: { storageClassName: openebs-replicated, size: 10Gi }
+  # RAG Track A: query embeddings through the gateway with the embed-only key
+  # (rag-pipeline/PLAN.md). Needs openwebuiRagApiKey in Vault BEFORE sync.
+  rag:
+    enabled: true
 
 # The cluster already runs kube-prometheus-stack, so don't deploy our own.
 # Instead, hand LiteLLM/ai-server metrics + the dashboard to that stack.
@@ -58,7 +62,8 @@ gateway:
 
 # Secrets come from Vault (nothing sensitive committed to git). Populate the KV
 # path basic-ai-platform with keys: postgresPassword, litellmMasterKey,
-# litellmSaltKey, webuiSecretKey, grafanaPassword.
+# litellmSaltKey, webuiSecretKey, grafanaPassword (+ the provisioned virtual
+# keys and rag role passwords — see values.yaml secrets.values comments).
 secrets:
   create: false
   vault:

@@ -1,0 +1,27 @@
+[project]
+name = "rag-pipeline"
+version = "0.1.0"
+description = "Scale-first ebook RAG pipeline for the Basic AI Platform: EPUB -> structure-aware chunks -> gateway embeddings -> own pgvector schema; retrieval via Open WebUI external knowledge (Track A) and rag-api hybrid search (Track B)."
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.13",
+    "psycopg[binary]>=3.2",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.115", "uvicorn>=0.30", "pgvector>=0.3"]
+
+[project.scripts]
+rag = "pipeline.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pipeline"]
