@@ -215,16 +215,50 @@ policyreports, CI green, threat model published.
 ## Weeks 2–3 — Compressed RAG exercise (formerly the Month 2 project)
 
 Build a minimal ebook RAG pipeline into the existing pgvector instance:
-ingestion → chunking → embeddings (`embed-nomic` / `embed-bge-m3` already
-exposed) → retrieval in Open WebUI with citations. Timebox it — this teaches
-fundamentals, it is not a differentiator.
+ingestion → chunking → embeddings → retrieval in Open WebUI with citations.
+Timebox it — this teaches fundamentals, it is not a differentiator. What makes
+it *yours* is running it on the hardened platform and attacking it.
 
-**Keep the modern part:** a small **eval set** (25–50 questions measuring
-retrieval and citation accuracy) and a **vector-store security** review —
-access control on retrieval, embedding inversion risk, cross-user data leakage
-via shared collections (now an OWASP category: Vector & Embedding Weaknesses).
+**Run it THROUGH the platform (not beside it):** Open WebUI knowledge feature
+backed by `VECTOR_DB=pgvector` (the `knowledge` DB already exists), embeddings
+called **through LiteLLM with a scoped key** — every embedding budgeted,
+rate-limited, and audit-logged like every chat call. Trap: `OFFLINE_MODE` is
+set on open-webui (egress-locked namespace), so RAG embedding config must use
+the gateway engine, never local sentence-transformers downloads.
 
-Skip: knowledge graphs, collections taxonomy, MOBI/AZW handling, polish.
+**Retrieval = hybrid, not dense-only (the 2026 production default):** dense
+(`embed-nomic` / `embed-bge-m3`) + Postgres full-text (`tsvector`) fused with
+reciprocal rank fusion — both live in the same database, so this is nearly
+free. `bge-m3` was picked for its hybrid capability; actually use it.
+Cross-encoder reranking (BGE-Reranker) is the next big precision gain but
+needs a serving path Ollama lacks — named stretch, not scope.
+
+**Eval set with real metrics, on Month-2 tooling:** 25–50 golden questions
+scored for **faithfulness, answer relevancy, context precision, context
+recall** (RAGAS vocabulary) — built in **promptfoo or Inspect** from day one
+so it seeds the Month-2 harness instead of being rework. Add a
+`workflow_dispatch` CI job: the first concrete instance of "evals as the
+security regression suite." Use the eval set (not vibes) to settle two craft
+ablations: structure-aware vs fixed-size chunking (± contextual chunk
+headers), and pgvector HNSW `ef_search` vs recall.
+
+**Vector-store security review — adversarial, not literature review**
+(OWASP LLM08:2025 Vector & Embedding Weaknesses; each risk = a runnable test):
+
+* **Poisoned-document indirect injection** — an ebook with embedded
+  instructions, ingested and retrieved; measure whether `prompt_guard` catches
+  it in the assembled prompt. The direct bridge to the Month-2 harness.
+* **Cross-user leakage** — two Open WebUI users, private collections,
+  adversarial queries against the shared pgvector store.
+* **Embedding inversion** — reconstruct text from your own stored vectors
+  (vec2text/ALGEN-style demo, or at minimum current-literature citations in
+  the threat model; see also 2026 "black-hole" retrieval attacks and the
+  secure-RAG survey — Week-4 reading).
+* **Write-path access control** — who may insert into the vector store is a
+  poisoning control; map it onto the existing per-key allow-lists.
+
+Skip: knowledge graphs, collections taxonomy, MOBI/AZW handling, polish,
+agentic/multi-hop RAG (Project 2), rerankers (stretch).
 
 ## Week 4 — Study sprint
 
