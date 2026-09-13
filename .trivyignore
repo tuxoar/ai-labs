@@ -2,4 +2,19 @@
 # Every entry needs: CVE id, image, reason, review-by date.
 # Gate policy: CRITICAL + --ignore-unfixed (unfixable OS-package CVEs are
 # visible in the SBOM artifacts but do not fail CI — nothing actionable).
-# (empty — populated as the CI gate surfaces fixable findings)
+
+# pgvector/pgvector:pg16 — Go stdlib crypto/tls in the bundled gosu binary.
+# gosu runs once at container init to drop root->postgres and makes no TLS
+# connections; the vulnerable code path is unreachable. Upstream pg16 tag has
+# not rebuilt (digest identical to our pin). Review: next pgvector image bump
+# or 2026-12-01, whichever first.
+CVE-2025-68121
+
+# ghcr.io/open-webui/open-webui (pinned main digest) — GitPython RCE via
+# crafted remote repo, fixed in 3.1.59. Compensating controls: the namespace
+# is egress-locked (CNP: litellm/postgres/DNS only), so the pod cannot clone
+# remote repositories at all, and OFFLINE_MODE disables the online import
+# paths. The current upstream :main build fixes GitPython but adds 4 new
+# fixable CRITICALs (nltk RCE x3, unstructured SSRF) — bumping is a net
+# regression today. Review: 2026-10-01 against upstream releases.
+CVE-2026-78676
