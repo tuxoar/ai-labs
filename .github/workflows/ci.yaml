@@ -89,25 +89,22 @@ jobs:
           name: sboms
           path: sboms/
 
-  # Only LiteLLM publishes cosign signatures upstream (verified: the .sig tag
-  # exists for the pinned digest; none of the other six images sign). Keyless
-  # GitHub-Actions identity. Non-blocking until the exact certificate identity
-  # is confirmed from a first run's output, then pin the regexp and drop
-  # continue-on-error.
+  # Only LiteLLM publishes cosign signatures upstream (none of the other six
+  # images sign). They sign with a KEY, not keyless OIDC — the public key is
+  # vendored at project-1-basic-ai-platform-k8s/keys/berriai-cosign.pub
+  # (pinned in-repo so CI does not trust their main branch at runtime).
   cosign-verify:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: sigstore/cosign-installer@v4.1.2
-      - name: Verify LiteLLM image signature
+      - name: Verify LiteLLM image signature (vendored public key)
         run: |
           img=$(python3 -c "
           import yaml
           print(yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))['litellm']['image'])")
-          cosign verify "$img" \
-            --certificate-identity-regexp '^https://github.com/BerriAI/litellm/' \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          cosign verify --key project-1-basic-ai-platform-k8s/keys/berriai-cosign.pub "$img"
+            "$img"
 
   # Placeholder: the smoke tests need the Talos cluster + GPU box, so they stay
   # out of hosted CI. This is also the hook point for the Month-2 red-team
