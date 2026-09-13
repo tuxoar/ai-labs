@@ -10,7 +10,7 @@
 -- KNOWN LIMIT: the HNSW index is NOT used through this operator (it's not the
 -- opclass operator) — Track A external retrieval seq-scans the collection.
 -- Fine at 10^4..10^5 chunks; Track B (rag-api) binds typed vectors and uses
--- the index properly. File/track the upstream fix so this shim can die.
+-- the index properly. Upstream: confirmed on open-webui/open-webui#26663 (fix PR #28363 pends); drop this migration once a release ships it.
 
 CREATE OR REPLACE FUNCTION public.vector_cosdist_f8array(vector, double precision[])
 RETURNS double precision
