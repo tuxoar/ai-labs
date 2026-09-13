@@ -44,7 +44,7 @@ networkPolicy:
 # Healthy (missing CRDs fail the sync). Then: Audit -> clean policyreports
 # (~24h) -> validationFailureAction: Enforce.
 kyverno:
-  enabled: false
+  enabled: true    # 45-kyverno Healthy on cluster (2026-09-13)
   validationFailureAction: Audit
 
 gateway:
