@@ -114,7 +114,11 @@ class PromptInjectionGuard(CustomGuardrail):
         # materializes when retrieved content reaches a completion call, which
         # this hook still gates. Found live: ingesting "Black Hat Bash"
         # (2026-09-13).
-        enforce = str(call_type) not in ("embeddings", "rerank")
+        # Runtime call_type strings vary by code path ("embeddings" via the
+        # typed hook signature, "aembedding" observed live) — match by
+        # substring so both async and sync names are covered.
+        ct = str(call_type)
+        enforce = not any(t in ct for t in ("embedding", "rerank"))
         blocked = enforce and score >= BLOCK_THRESHOLD
         verdict = {
             "event": "prompt_injection_suspect",
