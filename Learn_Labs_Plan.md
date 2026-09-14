@@ -38,7 +38,7 @@ model-weight protection. This revision:
 1. Adds a **Secure Agent Platform** project (MCP + sandboxing + agent identity) as the centerpiece.
 2. Adds a **red-teaming & evals** track — evals as the security regression suite.
 3. Adds a **model-weight & infrastructure security** track (RAND SL framework, attestation, egress controls) — the AI-lab-specific material.
-4. Compresses the RAG Knowledge Platform from a month to ~1–2 weeks (it's a tutorial in 2026, not a differentiator).
+4. Reframes the old RAG project as a **Modern Retrieval & Context Engineering Lab**: hybrid retrieval, reranking, hierarchical context, late interaction, and measured retrieval evals — the differentiator is engineering and evaluation, not merely having RAG.
 5. Rebuilds the AI SecOps project on the secure-agent foundation, with a published threat model.
 6. Updates all study material to OWASP LLM Top 10 (2025), Agentic Top 10 (2026), MITRE ATLAS, and NIST AI RMF.
 7. Adds a **visibility layer**: published threat models and write-ups, OSS contributions, responsible disclosure.
@@ -54,7 +54,7 @@ At the end of 90 days, the portfolio should contain:
 3. **AI Red Team & Eval Harness** — automated injection/jailbreak testing wired into CI
 4. **AI Security Operations Platform** — investigation agents built on the secure foundation
 5. **Model-Weight Security Lab** — egress controls, attestation, RAND SL mapping *(spans month 3)*
-6. AI Knowledge Platform — compressed RAG exercise *(1–2 weeks, folded into Month 1)*
+6. **Modern Retrieval & Context Engineering Lab** — hybrid + hierarchical retrieval, reranking, late-interaction experiments, and evals *(2 weeks, folded into Month 1 and consumed by Project 2)*
 7. AI Radio Net Logger *(optional)*
 
 Plus **published artifacts**: a threat model per project, blog write-ups, and at
@@ -204,7 +204,7 @@ and look for contribution opportunities (see Visibility).
 
 # Month 1
 
-# Harden the Foundation + RAG Fundamentals
+# Harden the Foundation + Modern Retrieval & Context Engineering
 
 ## Week 1 — Project 1 hardening pass ✅ DONE (2026-09-12)
 
@@ -212,53 +212,149 @@ Executed the "Changes to apply to Project 1" list above — see the completion
 notes there. Final state: 24/24 smoke checks, Kyverno Enforce with clean
 policyreports, CI green, threat model published.
 
-## Weeks 2–3 — Compressed RAG exercise (formerly the Month 2 project)
+## Weeks 2–3 — Modern Retrieval & Context Engineering Lab
 
-Build a minimal ebook RAG pipeline into the existing pgvector instance:
-ingestion → chunking → embeddings → retrieval in Open WebUI with citations.
-Timebox it — this teaches fundamentals, it is not a differentiator. What makes
-it *yours* is running it on the hardened platform and attacking it.
+Build a production-style retrieval system over a **large personal ebook corpus** and
+benchmark each architectural improvement. The goal is no longer to demonstrate that
+you can wire embeddings to a vector database; it is to understand **retrieval quality,
+context construction, evaluation, and the security boundaries of a modern context
+engine**. This becomes the knowledge/research tool consumed by Project 2.
 
-**Run it THROUGH the platform (not beside it):** Open WebUI knowledge feature
-backed by `VECTOR_DB=pgvector` (the `knowledge` DB already exists), embeddings
-called **through LiteLLM with a scoped key** — every embedding budgeted,
-rate-limited, and audit-logged like every chat call. Trap: `OFFLINE_MODE` is
-set on open-webui (egress-locked namespace), so RAG embedding config must use
-the gateway engine, never local sentence-transformers downloads.
+**Run it THROUGH the platform (not beside it):** keep PostgreSQL + pgvector as the
+primary store and route embedding/model calls **through LiteLLM with scoped keys** so
+requests remain budgeted, rate-limited, and audit-logged. Preserve Open WebUI as a
+simple interactive client, but build the retrieval pipeline as its own service/API so
+it can later be exposed safely to agents. `OFFLINE_MODE` remains enabled; model and
+embedding dependencies must be explicitly provisioned rather than downloaded at
+runtime.
 
-**Retrieval = hybrid, not dense-only (the 2026 production default):** dense
-(`embed-nomic` / `embed-bge-m3`) + Postgres full-text (`tsvector`) fused with
-reciprocal rank fusion — both live in the same database, so this is nearly
-free. `bge-m3` was picked for its hybrid capability; actually use it.
-Cross-encoder reranking (BGE-Reranker) is the next big precision gain but
-needs a serving path Ollama lacks — named stretch, not scope.
+### 1. Structural ingestion — books are not bags of chunks
 
-**Eval set with real metrics, on Month-2 tooling:** 25–50 golden questions
-scored for **faithfulness, answer relevancy, context precision, context
-recall** (RAGAS vocabulary) — built in **promptfoo or Inspect** from day one
-so it seeds the Month-2 harness instead of being rework. Add a
-`workflow_dispatch` CI job: the first concrete instance of "evals as the
-security regression suite." Use the eval set (not vibes) to settle two craft
-ablations: structure-aware vs fixed-size chunking (± contextual chunk
-headers), and pgvector HNSW `ef_search` vs recall.
+Normalize EPUB/PDF/TXT into a canonical document model and preserve hierarchy:
 
-**Vector-store security review — adversarial, not literature review**
-(OWASP LLM08:2025 Vector & Embedding Weaknesses; each risk = a runnable test):
+```
+book → chapter → section → passage
+```
 
-* **Poisoned-document indirect injection** — an ebook with embedded
-  instructions, ingested and retrieved; measure whether `prompt_guard` catches
-  it in the assembled prompt. The direct bridge to the Month-2 harness.
-* **Cross-user leakage** — two Open WebUI users, private collections,
-  adversarial queries against the shared pgvector store.
-* **Embedding inversion** — reconstruct text from your own stored vectors
-  (vec2text/ALGEN-style demo, or at minimum current-literature citations in
-  the threat model; see also 2026 "black-hole" retrieval attacks and the
-  secure-RAG survey — Week-4 reading).
-* **Write-path access control** — who may insert into the vector store is a
-  poisoning control; map it onto the existing per-key allow-lists.
+Store stable document/parent IDs, title, author, chapter/section headings, source
+location/page where available, and the original normalized text. Start with EPUB and
+text-native PDF; scanned/OCR-heavy books and MOBI/AZW remain out of scope.
 
-Skip: knowledge graphs, collections taxonomy, MOBI/AZW handling, polish,
-agentic/multi-hop RAG (Project 2), rerankers (stretch).
+Compare **structure-aware passage splitting** against fixed-token chunking. Do not
+throw away parent text after chunking: retrieval should be able to locate a passage
+and then expand upward to its section or chapter.
+
+### 2. Contextual indexing
+
+Create a short contextual header for each passage before indexing, e.g. book, chapter,
+section, entities/topic, and enough generated context to resolve ambiguous references.
+Index the contextualized representation while retaining the original passage as the
+citable source. Measure whether contextual enrichment improves retrieval rather than
+assuming it does.
+
+### 3. Build a retrieval ladder, not one retriever
+
+Implement and benchmark these stages independently:
+
+1. **Lexical baseline** — PostgreSQL FTS/BM25-style search (`tsvector`/`tsquery`).
+2. **Dense baseline** — pgvector + `embed-bge-m3` (keep `embed-nomic` as a comparison).
+3. **Hybrid retrieval** — lexical + dense candidates fused with **Reciprocal Rank
+   Fusion (RRF)**.
+4. **Reranking** — retrieve broadly (e.g. top 30–50), then use a dedicated
+   **cross-encoder/BGE reranker service** to produce the final top passages. This is
+   required, not stretch; deploying a separate model-serving path is part of the lab.
+5. **Hierarchical parent expansion** — after passage retrieval/reranking, expand the
+   strongest hits to coherent sections/chapters and let the long-context model read
+   broader source material. The operating principle is **retrieve narrowly, read
+   broadly**.
+
+Tune pgvector HNSW (`ef_search`) against measured recall/latency instead of choosing a
+value by intuition.
+
+### 4. Late-interaction retrieval experiment
+
+Add **ColBERT-style late-interaction retrieval** as the principal stretch experiment.
+Run it over the same corpus/eval set and compare it with the pgvector hybrid +
+reranker pipeline. Record retrieval quality, index size, ingestion cost, query latency,
+and operational complexity. The objective is to understand when token-level late
+interaction is worth the storage/serving tradeoff, not to replace pgvector by default.
+
+### 5. Retrieval evaluation as an engineering experiment
+
+Create a versioned golden dataset of at least **50 questions** spanning:
+
+* exact terms, names, quotations, and identifiers (lexical strength)
+* semantic/paraphrased questions (dense strength)
+* obscure facts located in one passage
+* questions whose evidence spans multiple passages/sections
+* questions requiring evidence from multiple books
+* conflicting authors/viewpoints
+* deliberately unanswerable questions
+
+Measure retrieval separately from generation. Track at minimum **Recall@k, MRR/nDCG,
+context precision, context recall, answer faithfulness, citation correctness, latency,
+and index/storage cost**. Use promptfoo or Inspect so the dataset feeds directly into
+Project 3. Keep RAGAS-style answer/context metrics where useful, but do not let
+LLM-as-judge scores replace deterministic retrieval metrics.
+
+Publish an ablation table in the README:
+
+| Configuration | Recall@10 | MRR/nDCG | Context Precision | Faithfulness | p95 latency | Index size |
+|---|---:|---:|---:|---:|---:|---:|
+| Lexical only | | | | | | |
+| Dense only | | | | | | |
+| Hybrid + RRF | | | | | | |
+| + contextual headers | | | | | | |
+| + reranker | | | | | | |
+| + parent expansion | | | | | | |
+| ColBERT / late interaction | | | | | | |
+
+### 6. Security review — retrieval is a trust boundary
+
+Treat every retrieval component as attacker-influenced and make each risk a runnable
+test (OWASP LLM08:2025 Vector & Embedding Weaknesses plus agentic threat paths):
+
+* **Poisoned-document indirect injection** — malicious instructions in an ebook are
+  retrieved into model context; test both detection and downstream behavior.
+* **Cross-user/collection leakage** — two principals, private collections, adversarial
+  queries against the shared store; authorization must be enforced before ranking.
+* **Metadata poisoning** — attacker-controlled title/author/chapter/context headers
+  manipulate retrieval or citations.
+* **Context flooding / retrieval DoS** — documents engineered to dominate candidate
+  sets or consume excessive context/tokens.
+* **Reranker manipulation** — adversarial passages score highly after initial retrieval.
+* **Citation spoofing** — retrieved text attempts to make the model attribute evidence
+  to the wrong book/chapter/page.
+* **Embedding/vector leakage** — demonstrate or document inversion/reconstruction risk
+  against your own vectors and define the storage/access boundary.
+* **Write-path access control** — only explicitly authorized ingestion identities may
+  mutate corpus/index state; map this to scoped credentials and audit logs.
+* **Agentic search-loop abuse** — seed the Project-2 tests for queries/content that
+  cause repeated searches, excessive context expansion, or resource exhaustion.
+
+### 7. Prepare retrieval as an agent tool
+
+Do **not** build the full agent loop yet. Define a narrow API/tool contract that Month
+2 can expose through MCP, with operations such as:
+
+```
+search_library(query, filters, top_k)
+read_passage(passage_id)
+read_section(section_id)
+read_chapter(chapter_id)
+search_metadata(author, title, topic)
+```
+
+Return structured provenance with every result. Keep search/read separate so the
+future agent can retrieve a small candidate set and deliberately request broader
+context rather than receiving an uncontrolled context dump. Define authorization,
+maximum results/context size, timeouts, and audit fields now.
+
+**Explicitly defer to Project 2:** iterative query decomposition, multi-hop research,
+agent-controlled repeated search, GraphRAG/knowledge-graph traversal, and autonomous
+decisions about whether enough evidence has been gathered. GraphRAG is optional and
+should be added only if the ebook eval set demonstrates relationship/multi-hop queries
+that hybrid + hierarchical retrieval handles poorly.
 
 ## Week 4 — Study sprint
 
@@ -269,7 +365,8 @@ Deliverables:
 
 * ✅ Hardened `project-1` (k8s fully; Compose scoped per the k8s-first
   decision) + published threat model
-* `rag-exercise/` with eval results in the README
+* `retrieval-context-lab/` with a structural ebook corpus pipeline, retrieval API,
+  benchmark/ablation results, and security tests in the README
 * Design doc for the Secure Agent Platform
 
 ---
@@ -304,14 +401,18 @@ LiteLLM gateway (existing) → models
 
 * **Write 2–3 MCP servers** wrapping your own infrastructure: a read-only
   Kubernetes inspector, a Wazuh alert query tool, a documentation/runbook
-  search. Real tools, real credentials, real consequences — which is what makes
-  the hardening meaningful.
+  search backed by the Month-1 retrieval/context service. Real tools, real credentials,
+  real consequences — which is what makes the hardening meaningful.
 * An agent loop that uses them for a genuine task (e.g., "why is this pod
-  crashlooping?").
+  crashlooping?"). For research/runbook tasks, implement **agentic retrieval**: the
+  agent may search, inspect provenance, read a parent section/chapter, reformulate or
+  decompose the query, search again, and stop only when it has sufficient evidence.
+  Bound search iterations, context growth, and tool-call budgets.
 
 ### Harden (the actual point)
 
-* **MCP threat model & hardening**: tool poisoning, SSRF from tool parameters
+* **MCP threat model & hardening**: tool poisoning, retrieval/context poisoning,
+  agentic search-loop abuse, SSRF from tool parameters
   (36%+ of public MCP servers were found potentially SSRF-vulnerable), confused
   deputy, tool-description injection, registry/supply-chain poisoning
   (study the ClawHub incident). Validate inputs, pin tool versions, authenticate
@@ -427,7 +528,9 @@ Deliverables:
 ## Core platform (unchanged — still current)
 
 * Python, FastAPI
-* PostgreSQL + pgvector, Redis
+* PostgreSQL + pgvector + PostgreSQL FTS, Redis
+* BGE-M3-class embeddings + dedicated cross-encoder/BGE reranker serving
+* ColBERT-style late interaction (experimental comparison, not mandatory production path)
 * Open WebUI, LiteLLM, Ollama, vLLM
 * ArgoCD, Helm
 
@@ -484,7 +587,9 @@ At the end of 90 days, you should be able to:
 * **Red-team AI systems** with garak/PyRIT/promptfoo and run evals as CI regression gates
 * Discuss **model-weight security** (RAND SLs, egress, attestation, confidential computing) the way AI labs do
 * Operate model gateways with governance (keys, budgets, audit, guardrails)
-* Build RAG systems and secure the vector layer
+* Design and benchmark **modern retrieval/context systems**: lexical + dense hybrid
+  retrieval, RRF, reranking, contextual indexing, hierarchical parent expansion,
+  late-interaction experiments, provenance, and retrieval-layer security
 * Point to **published threat models, write-ups, and contributions** — not just repos
 * Interview successfully for Security Engineering roles **at AI companies**, and for AI Infrastructure/Security roles elsewhere
 
