@@ -69,6 +69,11 @@ spec:
     - fromEndpoints:
         - matchLabels:
             {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 12 }}
+        {{- if .Values.ragApi.enabled }}
+        # rag-api embeds queries through the gateway (embed-only key).
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 12 }}
+        {{- end }}
       toPorts:
         - ports:
             - port: "4000"
@@ -134,6 +139,11 @@ spec:
             {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
         - matchLabels:
             {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 12 }}
+        {{- if .Values.ragApi.enabled }}
+        # rag-api reads the rag schema as the read-only role.
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 12 }}
+        {{- end }}
       toPorts:
         - ports:
             - port: "5432"
@@ -224,6 +234,44 @@ spec:
       toPorts:
         - ports:
             - port: "9090"
+              protocol: TCP
+    {{- include "bap.dnsEgress" . | nindent 4 }}
+{{- end }}
+{{- if .Values.ragApi.enabled }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rag-api
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  description: "rag-api: ingress from Open WebUI only (future pipe; port-forward arrives from host); egress to Postgres + LiteLLM"
+  endpointSelector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "open-webui") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: {{ .Values.ragApi.port | quote }}
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "postgres") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            {{- include "bap.selectorLabels" (dict "component" "litellm") | nindent 12 }}
+      toPorts:
+        - ports:
+            - port: "4000"
               protocol: TCP
     {{- include "bap.dnsEgress" . | nindent 4 }}
 {{- end }}

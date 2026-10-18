@@ -65,13 +65,14 @@ spec:
       validate:
         message: >-
           Image registry not in the platform allow-list (ghcr.io/berriai,
-          ghcr.io/open-webui, and the pinned Docker Hub repos).
+          ghcr.io/open-webui, ghcr.io/tuxoar for our own rag-api, and the
+          pinned Docker Hub repos).
         pattern:
           spec:
             containers:
-              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
+              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | ghcr.io/tuxoar/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
             =(initContainers):
-              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
+              - image: "ghcr.io/berriai/* | ghcr.io/open-webui/* | ghcr.io/tuxoar/* | docker.io/* | pgvector/* | redis:* | prom/* | grafana/* | busybox:*"
 ---
 apiVersion: kyverno.io/v1
 kind: Policy

@@ -1,0 +1,109 @@
+{{- if .Values.ragApi.enabled }}
+{{/*
+rag-api — Track B retrieval service (rag-pipeline/api). Read-only DB role,
+embed-only gateway key, static bearer tokens (workload identity is Project 2).
+Hardened like every other pod: digest-pinned image, non-root, read-only
+rootfs, no SA token, explicit resources; CNP in networkpolicies.yaml.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ragApi.port }}
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  labels:
+    {{- include "bap.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ragApi.replicas }}
+  selector:
+    matchLabels:
+      {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bap.selectorLabels" (dict "component" "rag-api") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.ragApi.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-postgres
+          image: {{ .Values.init.image }}
+          securityContext:
+            {{- toYaml .Values.init.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.init.resources | nindent 12 }}
+          command: ["sh", "-c", "until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done"]
+      containers:
+        - name: rag-api
+          image: {{ required "ragApi.image must be set (tag@digest) when ragApi.enabled" .Values.ragApi.image }}
+          securityContext:
+            {{- toYaml .Values.ragApi.containerSecurityContext | nindent 12 }}
+          env:
+            - name: RAG_PG_HOST
+              value: postgres
+            - name: RAG_PG_PORT
+              value: "5432"
+            - name: RAG_PG_DB
+              value: knowledge
+            - name: RAG_PG_USER
+              value: rag_read
+            - name: RAG_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: ragReadPassword
+            - name: RAG_GATEWAY_URL
+              value: "http://litellm:{{ .Values.litellm.port }}/v1"
+            - name: RAG_GATEWAY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: openwebuiRagApiKey
+            - name: RAG_API_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bap.secretName" . }}
+                  key: ragApiTokens
+            - name: RAG_MAX_TOP_K
+              value: {{ .Values.ragApi.bounds.maxTopK | quote }}
+            - name: RAG_MAX_CANDIDATES
+              value: {{ .Values.ragApi.bounds.maxCandidates | quote }}
+            - name: RAG_MAX_CONTEXT_CHARS
+              value: {{ .Values.ragApi.bounds.maxContextChars | quote }}
+            - name: RAG_MAX_EXPAND
+              value: {{ .Values.ragApi.bounds.maxExpand | quote }}
+            - name: RAG_EMBED_TIMEOUT_S
+              value: {{ .Values.ragApi.bounds.embedTimeoutSeconds | quote }}
+            - name: RAG_SQL_TIMEOUT_MS
+              value: {{ .Values.ragApi.bounds.sqlTimeoutMs | quote }}
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.ragApi.resources | nindent 12 }}
+{{- end }}

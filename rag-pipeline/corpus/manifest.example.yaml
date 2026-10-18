@@ -18,3 +18,14 @@ variants:
   # its own collection so retrieval comparisons stay clean).
   - collection: lib-bgem3-1000
     params: { embedder: [embed-bge-m3], chunk_size: 1000, chunk_overlap: 100 }
+
+  # Phase 3 — hierarchy-aware variants (post-migration-005): packing stops at
+  # SECTION boundaries and every chunk carries section_id, which enables the
+  # "+ parent expansion" ablation row. Same embedders/sizes as the baselines
+  # so the only difference measured is the structural split.
+  - collection: lib-nomic-1000-h
+    params: { embedder: [embed-nomic], chunk_size: 1000, chunk_overlap: 100, split: section }
+  - collection: lib-nomic-1000-ctx-h
+    params: { embedder: [embed-nomic], chunk_size: 1000, chunk_overlap: 100, split: section, contextual_headers: true }
+  - collection: lib-bgem3-1000-h
+    params: { embedder: [embed-bge-m3], chunk_size: 1000, chunk_overlap: 100, split: section }

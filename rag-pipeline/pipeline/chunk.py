@@ -1,12 +1,14 @@
-"""Chunking strategies. Paragraph-respecting fixed-size splitter with overlap;
-chapters are never merged across boundaries (structure-aware by construction).
-The optional contextual header — "<Book> — <Chapter>" prepended to every
-chunk — is ablation (a) in the eval matrix."""
+"""Chunking strategies. Paragraph-respecting fixed-size packing with overlap
+inside a structural unit — a chapter (split="chapter", the Phase-1 behaviour,
+hash-stable for existing collections) or a section (split="section", Phase 3:
+overlap never crosses a heading and every chunk knows its section). The
+optional contextual header — "[Book — Chapter — Section]" prepended to every
+chunk — is ablation row "+ contextual headers" in the eval matrix."""
 
 import hashlib
 from dataclasses import dataclass
 
-from .parse import Book, Chapter
+from .parse import Book, Chapter, Section
 
 
 @dataclass
@@ -16,6 +18,8 @@ class Chunk:
     text: str
     content_hash: str
     meta: dict
+    chapter_seq: int = 0
+    section_seq: int | None = None   # None for chapter-split chunks
 
 
 def _split_paragraphs(md: str) -> list[str]:
@@ -51,28 +55,52 @@ def _pack(paragraphs: list[str], size: int, overlap: int) -> list[str]:
     return out
 
 
+def _header(book: Book, ch: Chapter, sec: Section | None) -> str:
+    parts = [book.title, ch.title]
+    if sec is not None and sec.heading and sec.heading != ch.title:
+        parts.append(sec.heading)
+    return "[" + " — ".join(parts) + "]\n"
+
+
 def chunk_book(
     book: Book,
     collection: str,
     chunk_size: int = 1000,
     chunk_overlap: int = 100,
     contextual_headers: bool = False,
+    split: str = "chapter",
 ) -> list[Chunk]:
+    if split not in ("chapter", "section"):
+        raise ValueError(f"split must be 'chapter' or 'section', got {split!r}")
     chunks: list[Chunk] = []
     seq = 0
-    for ch in book.chapters:
-        for piece in _pack(_split_paragraphs(ch.markdown), chunk_size, chunk_overlap):
-            seq += 1
-            text = piece
-            if contextual_headers:
-                text = f"[{book.title} — {ch.title}]\n{piece}"
-            chunks.append(
-                Chunk(
-                    chapter=ch.title,
-                    seq=seq,
-                    text=text,
-                    content_hash=hashlib.sha256(f"{collection}\x00{text}".encode()).hexdigest(),
-                    meta={"chapter_seq": ch.seq},
-                )
+
+    def emit(ch: Chapter, sec: Section | None, piece: str) -> None:
+        nonlocal seq
+        seq += 1
+        text = (_header(book, ch, sec) + piece) if contextual_headers else piece
+        meta = {"chapter_seq": ch.seq}
+        if sec is not None:
+            meta["section_seq"] = sec.seq
+            meta["section_depth"] = sec.depth
+        chunks.append(
+            Chunk(
+                chapter=ch.title,
+                seq=seq,
+                text=text,
+                content_hash=hashlib.sha256(f"{collection}\x00{text}".encode()).hexdigest(),
+                meta=meta,
+                chapter_seq=ch.seq,
+                section_seq=sec.seq if sec is not None else None,
             )
+        )
+
+    for ch in book.chapters:
+        if split == "chapter":
+            for piece in _pack(_split_paragraphs(ch.markdown), chunk_size, chunk_overlap):
+                emit(ch, None, piece)
+        else:
+            for sec in ch.sections:
+                for piece in _pack(_split_paragraphs(sec.markdown), chunk_size, chunk_overlap):
+                    emit(ch, sec, piece)
     return chunks

@@ -14,6 +14,12 @@ openWebui:
   rag:
     enabled: true
 
+# rag-api (Track B). Enable AFTER CI has published ghcr.io/tuxoar/rag-api and
+# the digest is pinned in values.yaml (Kyverno require-digests), and AFTER
+# Vault holds ragApiTokens (+ ragReadPassword, openwebuiRagApiKey already there).
+ragApi:
+  enabled: false
+
 # The cluster already runs kube-prometheus-stack, so don't deploy our own.
 # Instead, hand LiteLLM/ai-server metrics + the dashboard to that stack.
 prometheus:

@@ -60,6 +60,9 @@ secrets:
     openwebuiRagApiKey: ""
     ragIngestPassword: ""
     ragReadPassword: ""
+    # rag-api bearer tokens, "name=token,name=token" (names appear in audit
+    # lines): e.g. "eval=<hex>,smoke=<hex>,webui=<hex>"; mint with openssl rand -hex 32.
+    ragApiTokens: ""
   vault:
     enabled: false
     # KV-v2 mount + path holding the 5 keys above (same key names, camelCase).
@@ -181,6 +184,40 @@ openWebui:
     enabled: false                  # values-talos: true
     embeddingModel: embed-nomic     # must match the collection's embedder
     embeddingBatchSize: "16"
+
+# --- rag-api (Track B retrieval + agent tool contract) -----------------------
+# rag-pipeline/api: hybrid search (lexical + dense + RRF) over the rag schema,
+# parent expansion, and bounded read endpoints. Connects as the READ-ONLY
+# `rag_read` role and embeds queries through the gateway with the embed-only
+# key. Requires secret keys ragReadPassword, openwebuiRagApiKey, ragApiTokens.
+# Image is built by CI from rag-pipeline/ (ghcr.io/tuxoar/rag-api); set the
+# digest pin here once published, then enable in values-talos.
+ragApi:
+  enabled: false
+  image: ""                        # ghcr.io/tuxoar/rag-api:<tag>@sha256:<digest>
+  port: 8000
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile: { type: RuntimeDefault }
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: { drop: ["ALL"] }
+  # The contract's bounds (PLAN.md "Agent tool contract"); env-tunable.
+  bounds:
+    maxTopK: 50
+    maxCandidates: 200
+    maxContextChars: 32000
+    maxExpand: 5
+    embedTimeoutSeconds: 10
+    sqlTimeoutMs: 5000
 
 # --- Observability -----------------------------------------------------------
 # Two modes:

@@ -14,7 +14,7 @@ import yaml
 from .chunk import chunk_book
 from .config import EMBEDDERS, Settings
 from .embed import embed_texts
-from .load import collection_stats, existing_hashes, load_chunks
+from .load import collection_stats, ensure_structure, existing_hashes, load_chunks
 from .parse import parse_epub
 from .webui import ensure_connection, ensure_embedding_config, ensure_knowledge
 
@@ -30,6 +30,7 @@ def ingest(
     chunk_size: int = typer.Option(1000),
     chunk_overlap: int = typer.Option(100),
     contextual_headers: bool = typer.Option(False, "--contextual-headers"),
+    split: str = typer.Option("chapter", help="packing unit: chapter (Phase-1 behaviour) or section"),
 ):
     settings = Settings()
     if not settings.gateway_key:
@@ -55,6 +56,7 @@ def ingest(
                 "chunk_size": chunk_size,
                 "chunk_overlap": chunk_overlap,
                 "contextual_headers": contextual_headers,
+                "split": split,
             }
         )
 
@@ -63,14 +65,21 @@ def ingest(
         models = job.get("embedder", embedder)
         for path in job["books"]:
             book = parse_epub(Path(path))
+            # Parents first (chapters/sections upserted, pre-005 chunks
+            # backfilled) — independent of the variant and of embedding spend.
+            st = ensure_structure(settings, book)
             chunks = chunk_book(
                 book,
                 col,
                 chunk_size=job.get("chunk_size", chunk_size),
                 chunk_overlap=job.get("chunk_overlap", chunk_overlap),
                 contextual_headers=job.get("contextual_headers", contextual_headers),
+                split=job.get("split", split),
             )
-            typer.echo(f"[{col}] {book.title!r}: {len(book.chapters)} chapters -> {len(chunks)} chunks")
+            typer.echo(
+                f"[{col}] {book.title!r}: {st['chapters']} chapters / {st['sections']} sections "
+                f"-> {len(chunks)} chunks (backfilled {st['backfilled']})"
+            )
             # Skip chunks already ingested+embedded BEFORE spending gateway
             # budget — makes re-runs after a mid-corpus failure cheap.
             for m in models:
@@ -91,9 +100,9 @@ def ingest(
 def status():
     settings = Settings()
     rows = collection_stats(settings)
-    typer.echo(f"{'collection':40} {'chunks':>7} {'nomic':>7} {'bgem3':>7} {'books':>6}")
-    for name, chunks, nomic, bgem3, books in rows:
-        typer.echo(f"{name:40} {chunks:>7} {nomic:>7} {bgem3:>7} {books:>6}")
+    typer.echo(f"{'collection':40} {'chunks':>7} {'nomic':>7} {'bgem3':>7} {'books':>6} {'w/sect':>7}")
+    for name, chunks, nomic, bgem3, books, with_section in rows:
+        typer.echo(f"{name:40} {chunks:>7} {nomic:>7} {bgem3:>7} {books:>6} {with_section:>7}")
 
 
 @app.command("webui-setup")

@@ -74,6 +74,8 @@ jobs:
           v = yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))
           imgs = [v[c]['image'] for c in ('postgres','redis','litellm','openWebui','prometheus','grafana')]
           imgs.append(v['init']['image'])
+          if v.get('ragApi', {}).get('image'):      # our own image, once published + pinned
+              imgs.append(v['ragApi']['image'])
           print('\n'.join(imgs))")
           rc=0
           while IFS= read -r img; do
@@ -104,6 +106,68 @@ jobs:
           import yaml
           print(yaml.safe_load(open('project-1-basic-ai-platform-k8s/values.yaml'))['litellm']['image'])")
           cosign verify --key project-1-basic-ai-platform-k8s/keys/berriai-cosign.pub "$img"
+
+  # rag-pipeline: unit tests (parser/chunker hierarchy, retrieval SQL builder,
+  # rag-api auth + bounds). No database or corpus needed.
+  rag-pipeline-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0   # no moving v10 tag
+      - name: pytest
+        working-directory: rag-pipeline
+        run: |
+          uv sync --extra api --group dev
+          uv run pytest -q
+
+  # rag-api image: built from rag-pipeline/ and pushed to ghcr.io/tuxoar/rag-api
+  # on main. The published digest is printed in the job summary; pin it in
+  # project-1-basic-ai-platform-k8s/values.yaml (ragApi.image) in a follow-up
+  # commit — Kyverno require-digests + the Trivy gate then cover it like every
+  # other image. PRs only build (no push) to prove the Dockerfile.
+  rag-api-image:
+    needs: [rag-pipeline-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        id: build
+        with:
+          context: rag-pipeline
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/tuxoar/rag-api:sha-${{ github.sha }}
+            ghcr.io/tuxoar/rag-api:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: false
+      - name: Scan the built image (CRITICAL gate, same policy as the pinned images)
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/tuxoar/rag-api:sha-${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          trivyignores: .trivyignore
+      - name: Publish digest
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "### rag-api image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "ghcr.io/tuxoar/rag-api:sha-${GITHUB_SHA}@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   # Placeholder: the smoke tests need the Talos cluster + GPU box, so they stay
   # out of hosted CI. This is also the hook point for the Month-2 red-team
