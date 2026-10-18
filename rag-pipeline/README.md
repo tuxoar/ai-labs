@@ -50,9 +50,13 @@ uv run rag webui-setup --collection lib-nomic-1000 \
 
 ## Status
 
-- [x] Phase 1 — schema, roles, ingestion pipeline
-- [x] Phase 2 — Open WebUI Track A wiring (external pgvector knowledge)
-- [ ] Phase 3 — rag-api (hybrid SQL: dense + BM25/tsvector + RRF, ef_search)
-- [ ] Phase 4 — promptfoo eval matrix (results land here)
-- [ ] Phase 5 — adversarial security tests → threat model LLM08
-- [ ] Phase 6 — docs wrap
+Phases per [PLAN.md](PLAN.md) (revision 2, 2026-10-18):
+
+- [x] Phase 1 — schema, roles, ingestion pipeline (live 2026-09-12)
+- [x] Phase 2 — Open WebUI Track A wiring, external pgvector knowledge (live 2026-09-12)
+- [ ] Phase 3 — section hierarchy (migration 005) + rag-api hybrid search with the agent tool contract
+- [ ] Phase 4 — cross-encoder reranker as its own serving path, behind LiteLLM; parent-expansion tuning
+- [ ] Phase 5 — promptfoo eval matrix: ≥50-question golden set, deterministic + judge metrics, ablation table (results land here)
+- [ ] Phase 6 — ColBERT late-interaction comparison (workstation experiment)
+- [ ] Phase 7 — nine adversarial security tests → threat model LLM08
+- [ ] Phase 8 — docs wrap

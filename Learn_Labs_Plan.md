@@ -54,11 +54,13 @@ At the end of 90 days, the portfolio should contain:
 3. **AI Red Team & Eval Harness** — automated injection/jailbreak testing wired into CI
 4. **AI Security Operations Platform** — investigation agents built on the secure foundation
 5. **Model-Weight Security Lab** — egress controls, attestation, RAND SL mapping *(spans month 3)*
-6. **Modern Retrieval & Context Engineering Lab** — hybrid + hierarchical retrieval, reranking, late-interaction experiments, and evals *(2 weeks, folded into Month 1 and consumed by Project 2)*
+6. **Modern Retrieval & Context Engineering Lab** — hybrid + hierarchical retrieval, reranking, late-interaction experiments, and evals *(2 weeks, folded into Month 1 and consumed by Project 2)* — 🔄 **in progress** as `rag-pipeline/`: ingestion + Open WebUI retrieval live since 2026-09-12; hybrid API, reranker, evals, security tests remain
 7. AI Radio Net Logger *(optional)*
 
 Plus **published artifacts**: a threat model per project, blog write-ups, and at
-least one upstream contribution or disclosure.
+least one upstream contribution or disclosure. *(First contribution attempt
+logged 2026-09-13: confirmed Open WebUI's external-pgvector `float8[]` bug on
+open-webui#26663 with a controlled retest and endorsed fix PR #28363.)*
 
 ---
 
@@ -206,13 +208,37 @@ and look for contribution opportunities (see Visibility).
 
 # Harden the Foundation + Modern Retrieval & Context Engineering
 
+> **Schedule note (2026-10-18).** Week 1 finished early (2026-09-12) and the
+> RAG lab's first two phases shipped the same weekend, then the lab paused
+> for five weeks. Calendar weeks below are now relative to the restart: the
+> remaining Weeks 2–3 work (`rag-pipeline/PLAN.md` Phases 3–8, ~3 weeks) is
+> the current block; Week 4 and Month 2 follow it unchanged.
+
 ## Week 1 — Project 1 hardening pass ✅ DONE (2026-09-12)
 
 Executed the "Changes to apply to Project 1" list above — see the completion
 notes there. Final state: 24/24 smoke checks, Kyverno Enforce with clean
 policyreports, CI green, threat model published.
 
-## Weeks 2–3 — Modern Retrieval & Context Engineering Lab
+## Weeks 2–3 — Modern Retrieval & Context Engineering Lab 🔄 IN PROGRESS
+
+**Status (2026-10-18)** — implemented as `rag-pipeline/`; detailed phases in
+[`rag-pipeline/PLAN.md`](rag-pipeline/PLAN.md). Scope was upgraded from an
+exercise to a long-term pipeline for the user's whole ebook library (design
+for thousands of books; corpus never enters this public repo).
+
+* ✅ Structural ingestion v1 (EPUB → chapter → paragraph-packed passages, ±contextual
+  headers), own `rag` schema in Postgres/pgvector with `rag_ingest`/`rag_read` roles,
+  embeddings through LiteLLM on a dedicated embed-only key. 18 books × 3 collections
+  ≈ 43k chunks ingested; idempotent re-runs proven.
+* ✅ Open WebUI consumes the store via an external pgvector knowledge connection on
+  the read-only role; citations render natively. Three field fixes shipped from the
+  first ingest, one upstream bug confirmed (see Visibility).
+* ⏳ Remaining, in order: section-level hierarchy + parent expansion and the hybrid
+  `rag-api` with the agent tool contract (Phase 3) → cross-encoder reranker as its own
+  serving path behind LiteLLM (4) → ≥50-question golden set, deterministic + judge
+  metrics, ablation table (5) → ColBERT comparison (6) → nine security tests (7) →
+  threat model LLM08 and docs (8).
 
 Build a production-style retrieval system over a **large personal ebook corpus** and
 benchmark each architectural improvement. The goal is no longer to demonstrate that
@@ -365,8 +391,9 @@ Deliverables:
 
 * ✅ Hardened `project-1` (k8s fully; Compose scoped per the k8s-first
   decision) + published threat model
-* `retrieval-context-lab/` with a structural ebook corpus pipeline, retrieval API,
-  benchmark/ablation results, and security tests in the README
+* `rag-pipeline/` (the lab's home; was `retrieval-context-lab/` in the plan) with a
+  structural ebook corpus pipeline, retrieval API, benchmark/ablation results, and
+  security tests in the README — 🔄 pipeline + UI retrieval done, API/evals/security pending
 * Design doc for the Secure Agent Platform
 
 ---
