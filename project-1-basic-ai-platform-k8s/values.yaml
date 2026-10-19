@@ -137,7 +137,7 @@ redis:
 
 # --- LiteLLM gateway ---------------------------------------------------------
 litellm:
-  image: ghcr.io/berriai/litellm:main-stable@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834
+  image: ghcr.io/berriai/litellm:main-stable@sha256:2e4c0371f3a8c28e4da131d77abaa8341cd3b0c2fcc4d34d7c5900431af7b9d0
   port: 4000
   resources:
     # LiteLLM's baseline RSS is ~600Mi-1Gi and spikes higher on startup with a
@@ -157,7 +157,7 @@ litellm:
 
 # --- Open WebUI --------------------------------------------------------------
 openWebui:
-  image: ghcr.io/open-webui/open-webui:v0.11.3@sha256:41daa0cf2561a5d4c8d1ff31ee2a98d93ab4d3ac2605cac69366ff6a3374a933
+  image: ghcr.io/open-webui/open-webui:v0.12.3@sha256:a537bbe1e6b428820f52ed4a029d7fff97062e24d5cf32c365fba36fd0542def
   storage:
     size: 5Gi
     storageClassName: ""

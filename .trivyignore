@@ -10,6 +10,20 @@
 # or 2026-12-01, whichever first.
 CVE-2025-68121
 
+# pgvector/pgvector:pg16 — perl 5.36 in the Debian bookworm base (libperl5.36,
+# perl, perl-base, perl-modules): regex heap overflow / incorrect regex
+# processing / Archive::Tar path traversal. Fixed in deb12u4, but the upstream
+# pg16 (= pg16-bookworm) tag has NOT been rebuilt (digest 7b822b0a still
+# ships deb12u3, scanned 2026-10-18). perl is present only as the plperl
+# runtime; nothing in this deployment creates plperl functions and the
+# database is reachable solely from litellm / open-webui / rag-api over the
+# CNP. The clean alternative, pg16-trixie, changes the glibc/collation base
+# and needs a planned REINDEX window — tracked as maintenance, not a CVE fix.
+# Review: next pgvector pg16 rebuild or 2026-11-15, whichever first.
+CVE-2026-13221
+CVE-2026-8376
+CVE-2026-42496
+
 # (previous entries: 4 open-webui RAG-lib CVEs — nltk RCE x3 CVE-2026-78683/
 # 79657/79675, unstructured SSRF CVE-2026-71428 — REMOVED 2026-09-13: the
 # v0.11.3 release build ships the fixed versions; pin bumped, scan clean.)
