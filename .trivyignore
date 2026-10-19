@@ -24,6 +24,26 @@ CVE-2026-13221
 CVE-2026-8376
 CVE-2026-42496
 
+# ghcr.io/open-webui/open-webui:v0.12.3 — three library CVEs whose
+# preconditions this deployment does not meet (verified against the v0.12.3
+# source, 2026-10-18):
+#  * PyJWT CVE-2026-102268 (HS/asymmetric confusion when ONE decode allow-list
+#    mixes HMAC with an asymmetric alg + raw-PEM key): Open WebUI never mixes
+#    — session tokens HS256 only (utils/auth.py), OIDC logout tokens RS*/ES*
+#    only (utils/oauth.py), apps tokens EdDSA only (socket/apps.py).
+#  * sentence-transformers CVE-2026-68770 (code exec when loading a LOCAL
+#    model directory): RAG_EMBEDDING_ENGINE=openai routes embeddings to the
+#    gateway; OFFLINE_MODE; no local model dir exists or can be written.
+#  * unstructured CVE-2026-71428 (SSRF via partition(url=)): Open WebUI calls
+#    unstructured only through file-path loaders (rst/xml/epub); URL fetching
+#    uses its own _SSRFSafeAdapter loader; the namespace is egress-locked to
+#    litellm/postgres/DNS by CNP.
+# Review: next open-webui release that bumps PyJWT>=2.14, unstructured>=0.24,
+# sentence-transformers>=5.6 — or 2026-11-15, whichever first.
+CVE-2026-102268
+CVE-2026-68770
+CVE-2026-71428
+
 # (previous entries: 4 open-webui RAG-lib CVEs — nltk RCE x3 CVE-2026-78683/
 # 79657/79675, unstructured SSRF CVE-2026-71428 — REMOVED 2026-09-13: the
 # v0.11.3 release build ships the fixed versions; pin bumped, scan clean.)
